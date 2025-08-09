@@ -34,11 +34,37 @@
             margin-top: 0.5rem; /* Adjust as needed */
             margin-bottom: 0.25rem;
         }
+
+        /* Custom Alert/Message Box Styles */
+        #customAlert {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 1.5rem 2.5rem;
+            border-radius: 0.75rem; /* rounded-xl */
+            text-align: center;
+            font-size: 1.25rem; /* text-xl */
+            font-weight: bold;
+            z-index: 1000;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.3); /* shadow-lg */
+            animation: fadeInOut 3s forwards; /* Animation for fade in and out */
+            white-space: pre-wrap; /* Preserve whitespace and line breaks */
+        }
+
+        @keyframes fadeInOut {
+            0% { opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { opacity: 0; }
+        }
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
     <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl">
-        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">� 최적 미팅 장소 찾기</h1>
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">🤝 최적 미팅 장소 찾기</h1>
         <form id="locationForm" class="space-y-4">
             <div>
                 <label for="map" class="block text-gray-700 text-sm font-semibold mb-2">
@@ -100,6 +126,9 @@
         </div>
     </div>
 
+    <!-- Custom Alert/Message Box -->
+    <div id="customAlert" class="hidden"></div>
+
     <script>
         let map;
         let originMarkers = []; // 사용자가 클릭하여 추가한 출발지 마커 배열
@@ -109,6 +138,17 @@
         let directionsService; // 경로 검색 서비스
         let directionsRenderers = []; // 경로 표시 렌더러 배열 (각 출발지마다)
 
+        // Function to show custom alert message
+        function showCustomAlert(message) {
+            const customAlert = document.getElementById("customAlert");
+            customAlert.textContent = message;
+            customAlert.classList.remove("hidden");
+            // Set a timeout to hide the message after 3 seconds
+            setTimeout(() => {
+                customAlert.classList.add("hidden");
+            }, 3000); 
+        }
+
         function initMap() {
             const seoul = { lat: 37.5665, lng: 126.9780 };
             map = new google.maps.Map(document.getElementById("map"), {
@@ -117,7 +157,7 @@
                 gestureHandling: "greedy"
             });
             infoWindow = new google.maps.InfoWindow();
-            directionsService = new google.maps.DirectionsService(); // DirectionsService 초기화
+            directionsService = new google.maps.DirectionsService();
 
             map.addListener("click", (e) => {
                 addOriginMarker(e.latLng);
@@ -125,7 +165,7 @@
 
             document.getElementById("clearMarkersBtn").addEventListener("click", clearOriginMarkers);
             document.getElementById("locationForm").addEventListener("submit", handleFormSubmit);
-            document.getElementById("useCurrentLocationBtn").addEventListener("click", useCurrentLocation); // 현위치 버튼 이벤트
+            document.getElementById("useCurrentLocationBtn").addEventListener("click", useCurrentLocation);
 
             const lambdaSlider = document.getElementById("lambdaSlider");
             const lambdaValueSpan = document.getElementById("lambdaValue");
@@ -134,9 +174,8 @@
             });
         }
 
-        // 현위치 사용 함수
         function useCurrentLocation() {
-            document.getElementById("currentLocationLoading").classList.remove("hidden"); // 로딩 표시
+            document.getElementById("currentLocationLoading").classList.remove("hidden");
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
@@ -144,9 +183,9 @@
                             lat: position.coords.latitude,
                             lng: position.coords.longitude,
                         };
-                        addOriginMarker(pos); // 현위치를 출발지 마커로 추가
-                        map.setCenter(pos); // 지도를 현위치로 이동
-                        map.setZoom(14); // 줌 레벨 조정
+                        addOriginMarker(pos);
+                        map.setCenter(pos);
+                        map.setZoom(14);
                         document.getElementById("currentLocationLoading").classList.add("hidden");
                     },
                     (error) => {
@@ -173,7 +212,6 @@
             }
         }
 
-        // 출발지 마커 추가
         function addOriginMarker(location) {
             const marker = new google.maps.Marker({
                 position: location,
@@ -187,7 +225,6 @@
             console.log("현재 선택된 출발지 좌표:", originCoords);
         }
 
-        // 출발지 마커 모두 제거
         function clearOriginMarkers() {
             for (let i = 0; i < originMarkers.length; i++) {
                 originMarkers[i].setMap(null);
@@ -198,7 +235,6 @@
             console.log("모든 출발지 핀이 제거되었습니다.");
         }
 
-        // 결과 마커 및 경로 제거 (새 검색 시 이전 결과 제거용)
         function clearResultMarkers() {
             for (let i = 0; i < resultMarkers.length; i++) {
                 resultMarkers[i].setMap(null);
@@ -207,14 +243,12 @@
             if (infoWindow) {
                 infoWindow.close();
             }
-            // 모든 경로 렌더러 제거
             for (let i = 0; i < directionsRenderers.length; i++) {
                 directionsRenderers[i].setMap(null);
             }
             directionsRenderers = [];
         }
 
-        // 폼 제출 핸들러 (AJAX 요청)
         async function handleFormSubmit(event) {
             event.preventDefault();
 
@@ -262,126 +296,198 @@
             }
         }
 
-        // 지도에 결과 마커 및 경로 표시
         function displayResultsOnMap(data) {
-            if (data.best_station) {
-                const stationPos = { lat: data.best_station.lat, lng: data.best_station.lng };
+            const bounds = new google.maps.LatLngBounds();
+            originMarkers.forEach(marker => bounds.extend(marker.getPosition())); // Always include origin markers
 
-                // 최적 역 마커 (파란색)
-                const stationMarker = new google.maps.Marker({
-                    position: stationPos,
-                    map: map,
-                    icon: {
-                        url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
-                    },
-                    title: data.best_station.name
-                });
-                resultMarkers.push(stationMarker);
+            // Handle results based on result_type
+            let mainPlacePos = null;
+            let mainPlaceTitle = "";
+            let mainPlaceIcon = "";
+            let mainPlaceContent = "";
 
-                // 정보 창 내용
-                let stationContent = `
+            if (data.result_type === "transit_station" && data.best_station) {
+                mainPlacePos = { lat: data.best_station.lat, lng: data.best_station.lng };
+                mainPlaceTitle = data.best_station.name;
+                mainPlaceIcon = "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"; // Blue for transit station
+                mainPlaceContent = `
                     <div class="info-window-content">
                         <h3>📍 최적 미팅역: ${data.best_station.name}</h3>
                         <p>평균 이동 시간: ${data.best_station.avg_min.toFixed(1)}분</p>
                         <p>최대 이동 시간: ${data.best_station.max_min.toFixed(1)}분</p>
                 `;
                 if (data.best_station.times && data.best_station.times.length > 0) {
-                    stationContent += `<p>개별 이동 시간 (일부):</p><ul>`;
+                    mainPlaceContent += `<p>개별 이동 시간 (일부):</p><ul>`;
                     const timesToShow = data.best_station.times.slice(0, Math.min(data.best_station.times.length, 3));
                     timesToShow.forEach((time, index) => {
-                        stationContent += `<li>출발지 ${index + 1}: ${time.toFixed(1)}분</li>`;
+                        mainPlaceContent += `<li>출발지 ${index + 1}: ${time.toFixed(1)}분</li>`;
                     });
-                    stationContent += `</ul>`;
+                    mainPlaceContent += `</ul>`;
                 }
-                stationContent += `</div>`;
+                mainPlaceContent += `</div>`;
 
-                stationMarker.addListener("click", () => {
-                    infoWindow.setContent(stationContent);
-                    infoWindow.open(map, stationMarker);
-                });
-
-                // 각 출발지에서 최적 역까지의 경로 그리기
-                const bounds = new google.maps.LatLngBounds();
+                // Draw transit routes
                 originMarkers.forEach((originMarker, index) => {
-                    bounds.extend(originMarker.getPosition()); // 출발지 마커도 bounds에 포함
-
                     const request = {
                         origin: originMarker.getPosition(),
-                        destination: stationPos,
-                        travelMode: google.maps.TravelMode.TRANSIT, // 대중교통 경로
+                        destination: mainPlacePos,
+                        travelMode: google.maps.TravelMode.TRANSIT,
                     };
-
                     directionsService.route(request, (result, status) => {
                         if (status === google.maps.DirectionsStatus.OK) {
                             const directionsRenderer = new google.maps.DirectionsRenderer({
                                 map: map,
-                                suppressMarkers: true, // 기본 마커는 숨기고 우리가 만든 마커만 사용
-                                polylineOptions: {
-                                    strokeColor: 'blue', // 경로 색상 설정 (예: 파란색)
-                                    strokeOpacity: 0.6,
-                                    strokeWeight: 4
-                                }
+                                suppressMarkers: true,
+                                polylineOptions: { strokeColor: 'blue', strokeOpacity: 0.6, strokeWeight: 4 }
                             });
                             directionsRenderer.setDirections(result);
-                            directionsRenderers.push(directionsRenderer); // 렌더러를 배열에 추가하여 나중에 지울 수 있도록 함
+                            directionsRenderers.push(directionsRenderer);
                         } else {
-                            console.error(`출발지 ${index + 1}에서 역까지의 경로를 찾을 수 없습니다: ${status}`);
+                            console.error(`출발지 ${index + 1}에서 역까지의 대중교통 경로를 찾을 수 없습니다: ${status}`);
                         }
                     });
                 });
-                bounds.extend(stationPos); // 최적 역 마커도 bounds에 포함
 
-                // 카페 마커 (초록색)
-                if (data.cafes_top10 && data.cafes_top10.length > 0) {
-                    data.cafes_top10.forEach(cafe => {
-                        const cafePos = { lat: cafe.lat, lng: cafe.lng };
-                        const cafeMarker = new google.maps.Marker({
-                            position: cafePos,
-                            map: map,
-                            icon: {
-                                url: "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
-                            },
-                            title: cafe.name
-                        });
-                        resultMarkers.push(cafeMarker);
-                        bounds.extend(cafePos); // 카페 마커도 bounds에 포함
-
-                        const cafeContent = `
-                            <div class="info-window-content">
-                                <h3>☕ 카페: ${cafe.name}</h3>
-                                <p>거리: ${cafe.distance_km.toFixed(2)} km</p>
-                                <p>위치: ${cafe.lat.toFixed(6)}, ${cafe.lng.toFixed(6)}</p>
-                            </div>
-                        `;
-                        cafeMarker.addListener("click", () => {
-                            infoWindow.setContent(cafeContent);
-                            infoWindow.open(map, cafeMarker);
-                        });
+            } else if (data.result_type === "bus_terminal" && data.best_bus_terminal) {
+                mainPlacePos = { lat: data.best_bus_terminal.lat, lng: data.best_bus_terminal.lng };
+                mainPlaceTitle = data.best_bus_terminal.name;
+                mainPlaceIcon = "http://maps.google.com/mapfiles/ms/icons/orange-dot.png"; // Orange for bus terminal
+                mainPlaceContent = `
+                    <div class="info-window-content">
+                        <h3>🚌 최적 버스 터미널: ${data.best_bus_terminal.name}</h3>
+                        <p>중심 지점으로부터 거리: ${data.best_bus_terminal.distance_km.toFixed(2)} km</p>
+                    </div>
+                `;
+                // Draw simple lines for bus terminal (Directions API transit mode may be limited for bus)
+                originMarkers.forEach((originMarker, index) => {
+                     new google.maps.Polyline({
+                        path: [originMarker.getPosition(), mainPlacePos],
+                        geodesic: true,
+                        strokeColor: '#FF9800',
+                        strokeOpacity: 0.6,
+                        strokeWeight: 2,
+                        map: map
                     });
-                }
-                map.fitBounds(bounds); // 모든 마커와 경로를 포함하도록 지도 뷰 조정
+                });
 
-            } else {
-                alert("죄송합니다. 제공된 좌표에서 최적의 역을 찾을 수 없었습니다.");
+            } else if (data.result_type === "direct_places" && (data.direct_nearby_places_cafes.length > 0 || data.direct_nearby_places_study_cafes.length > 0)) {
+                mainPlacePos = { lat: data.best_point.lat, lng: data.best_point.lng };
+                mainPlaceTitle = "최적 중심 지점";
+                mainPlaceIcon = "http://maps.google.com/mapfiles/ms/icons/purple-dot.png"; // Purple for direct places center
+                mainPlaceContent = `
+                    <div class="info-window-content">
+                        <h3>✨ 최적 중심 지점</h3>
+                        <p>역/터미널 대신 이 주변에서 만남을 고려해보세요.</p>
+                    </div>
+                `;
+                 // Draw simple lines to best point
+                originMarkers.forEach((originMarker, index) => {
+                     new google.maps.Polyline({
+                        path: [originMarker.getPosition(), mainPlacePos],
+                        geodesic: true,
+                        strokeColor: '#800080',
+                        strokeOpacity: 0.6,
+                        strokeWeight: 2,
+                        map: map
+                    });
+                });
             }
+
+            // Add main place marker if found
+            if (mainPlacePos) {
+                const mainPlaceMarker = new google.maps.Marker({
+                    position: mainPlacePos,
+                    map: map,
+                    icon: { url: mainPlaceIcon },
+                    title: mainPlaceTitle
+                });
+                resultMarkers.push(mainPlaceMarker);
+                bounds.extend(mainPlacePos);
+                mainPlaceMarker.addListener("click", () => {
+                    infoWindow.setContent(mainPlaceContent);
+                    infoWindow.open(map, mainPlaceMarker);
+                });
+            }
+            
+            // Add nearby cafes (green dot)
+            const cafesToDisplay = data.cafes_list || data.direct_nearby_places_cafes || [];
+            cafesToDisplay.forEach(cafe => {
+                const cafePos = { lat: cafe.lat, lng: cafe.lng };
+                const cafeMarker = new google.maps.Marker({
+                    position: cafePos,
+                    map: map,
+                    icon: { url: "http://maps.google.com/mapfiles/ms/icons/green-dot.png" },
+                    title: cafe.name
+                });
+                resultMarkers.push(cafeMarker);
+                bounds.extend(cafePos);
+
+                const cafeContent = `
+                    <div class="info-window-content">
+                        <h3>☕ 카페: ${cafe.name}</h3>
+                        <p>거리: ${cafe.distance_km.toFixed(2)} km</p>
+                        <p>위치: ${cafe.lat.toFixed(6)}, ${cafe.lng.toFixed(6)}</p>
+                    </div>
+                `;
+                cafeMarker.addListener("click", () => {
+                    infoWindow.setContent(cafeContent);
+                    infoWindow.open(map, cafeMarker);
+                });
+            });
+
+            // Add nearby study cafes (yellow dot)
+            const studyCafesToDisplay = data.study_cafes_list || data.direct_nearby_places_study_cafes || [];
+            studyCafesToDisplay.forEach(studyCafe => {
+                const studyCafePos = { lat: studyCafe.lat, lng: studyCafe.lng };
+                const studyCafeMarker = new google.maps.Marker({
+                    position: studyCafePos,
+                    map: map,
+                    icon: { url: "http://maps.google.com/mapfiles/ms/icons/yellow-dot.png" },
+                    title: studyCafe.name
+                });
+                resultMarkers.push(studyCafeMarker);
+                bounds.extend(studyCafePos);
+
+                const studyCafeContent = `
+                    <div class="info-window-content">
+                        <h3>📚 스터디카페: ${studyCafe.name}</h3>
+                        <p>거리: ${studyCafe.distance_km.toFixed(2)} km</p>
+                        <p>위치: ${studyCafe.lat.toFixed(6)}, ${studyCafe.lng.toFixed(6)}</p>
+                        <button class="mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                                onclick="showCustomAlert('⏳ 아직은 비밀\\n조금만 기다리면 예약까지 한 번에!')">예약하기</button>
+                    </div>
+                `;
+                studyCafeMarker.addListener("click", () => {
+                    infoWindow.setContent(studyCafeContent);
+                    infoWindow.open(map, studyCafeMarker);
+                });
+            });
+
+            if (data.result_type === "no_places_found" || data.error) {
+                console.warn("No places found or an error occurred. Map will only show origin markers.");
+            }
+            map.fitBounds(bounds);
         }
 
-        // 텍스트 결과 표시 (result.html의 내용 통합)
         function displayResultsText(data) {
             const resultsDisplay = document.getElementById("resultsDisplay");
             let htmlContent = '';
 
-            if (data.best_station) {
+            if (data.error) {
+                htmlContent += `
+                    <p class="text-red-600 text-lg font-medium text-center p-4 bg-red-50 rounded-lg border border-red-200">
+                        오류: ${data.error}
+                    </p>
+                `;
+            } else if (data.result_type === "transit_station" && data.best_station) {
                 htmlContent += `
                     <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                        <h2 class="text-2xl font-semibold text-blue-800 mb-3">📍 최적 미팅역</h2>
+                        <h2 class="text-2xl font-semibold text-blue-800 mb-3">📍 최적 미팅역 (지하철/기차)</h2>
                         <p class="text-lg text-gray-700 mb-2"><strong>이름:</strong> ${data.best_station.name}</p>
                         <p class="text-lg text-gray-700 mb-2"><strong>위치:</strong> ${data.best_station.lat.toFixed(6)}, ${data.best_station.lng.toFixed(6)}</p>
                         <p class="text-lg text-gray-700 mb-2"><strong>평균 이동 시간:</strong> ${data.best_station.avg_min.toFixed(1)}분</p>
                         <p class="text-lg text-gray-700 mb-2"><strong>최대 이동 시간:</strong> ${data.best_station.max_min.toFixed(1)}분</p>
                 `;
-
-                // 각 출발지로부터의 이동 시간 목록 추가
                 if (data.best_station.times && data.best_station.times.length > 0) {
                     htmlContent += `<h3 class="text-xl font-semibold text-blue-700 mt-4 mb-2">각 출발지에서 역까지 이동 시간:</h3>`;
                     htmlContent += `<ul class="list-disc pl-5 space-y-1 text-gray-700">`;
@@ -392,13 +498,14 @@
                 }
                 htmlContent += `</div>`;
 
-                if (data.cafes_top10 && data.cafes_top10.length > 0) {
+                // Display Cafes
+                if (data.cafes_list && data.cafes_list.length > 0) {
                     htmlContent += `
                         <div class="mb-6 p-4 bg-green-50 rounded-lg border border-green-200">
-                            <h2 class="text-2xl font-semibold text-green-800 mb-3">☕ 주변 카페 (상위 10개)</h2>
+                            <h2 class="text-2xl font-semibold text-green-800 mb-3">☕ 주변 카페 (상위 5개)</h2>
                             <ul class="list-disc pl-5 space-y-2 text-gray-700">
                     `;
-                    data.cafes_top10.forEach(cafe => {
+                    data.cafes_list.forEach(cafe => {
                         htmlContent += `
                                 <li>
                                     <strong>${cafe.name}</strong> (거리: ${cafe.distance_km.toFixed(2)} km)
@@ -410,18 +517,151 @@
                             </ul>
                         </div>
                     `;
-                } else {
+                }
+
+                // Display Study Cafes
+                if (data.study_cafes_list && data.study_cafes_list.length > 0) {
                     htmlContent += `
-                        <div class="mb-6 p-4 bg-green-50 rounded-lg border border-green-200">
-                            <h2 class="text-2xl font-semibold text-green-800 mb-3">☕ 주변 카페</h2>
-                            <p class="text-gray-700">주변에 찾을 수 있는 카페가 없습니다.</p>
+                        <div class="mb-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                            <h2 class="text-2xl font-semibold text-yellow-800 mb-3">📚 주변 스터디카페 (상위 5개)</h2>
+                            <ul class="list-disc pl-5 space-y-2 text-gray-700">
+                    `;
+                    data.study_cafes_list.forEach(studyCafe => {
+                        htmlContent += `
+                                <li>
+                                    <strong>${studyCafe.name}</strong> (거리: ${studyCafe.distance_km.toFixed(2)} km)
+                                    <span class="text-sm text-gray-500">(${studyCafe.lat.toFixed(6)}, ${studyCafe.lng.toFixed(6)})</span>
+                                    <button class="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
+                                            onclick="showCustomAlert('⏳ 아직은 비밀\\n조금만 기다리면 예약까지 한 번에!')">예약하기</button>
+                                </li>
+                        `;
+                    });
+                    htmlContent += `
+                            </ul>
                         </div>
                     `;
                 }
-            } else if (data.message) {
+
+                if (!(data.cafes_list && data.cafes_list.length > 0) && !(data.study_cafes_list && data.study_cafes_list.length > 0)) {
+                    htmlContent += `
+                        <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <h2 class="text-2xl font-semibold text-gray-800 mb-3">☕ 주변 장소</h2>
+                            <p class="text-gray-700">주변에 찾을 수 있는 카페나 스터디카페가 없습니다.</p>
+                        </div>
+                    `;
+                }
+
+            } else if (data.result_type === "bus_terminal" && data.best_bus_terminal) {
+                htmlContent += `
+                    <div class="mb-6 p-4 bg-orange-50 rounded-lg border border-orange-200">
+                        <h2 class="text-2xl font-semibold text-orange-800 mb-3">🚌 최적 미팅 버스 터미널</h2>
+                        <p class="text-lg text-gray-700 mb-2"><strong>이름:</strong> ${data.best_bus_terminal.name}</p>
+                        <p class="text-lg text-gray-700 mb-2"><strong>위치:</strong> ${data.best_bus_terminal.lat.toFixed(6)}, ${data.best_bus_terminal.lng.toFixed(6)}</p>
+                        <p class="text-lg text-gray-700 mb-2"><strong>중심 지점으로부터 거리:</strong> ${data.best_bus_terminal.distance_km.toFixed(2)} km</p>
+                    </div>
+                `;
+                // Display Cafes for bus terminal
+                if (data.cafes_list && data.cafes_list.length > 0) {
+                    htmlContent += `
+                        <div class="mb-6 p-4 bg-green-50 rounded-lg border border-green-200">
+                            <h2 class="text-2xl font-semibold text-green-800 mb-3">☕ 주변 카페 (상위 5개)</h2>
+                            <ul class="list-disc pl-5 space-y-2 text-gray-700">
+                    `;
+                    data.cafes_list.forEach(cafe => {
+                        htmlContent += `
+                                <li>
+                                    <strong>${cafe.name}</strong> (거리: ${cafe.distance_km.toFixed(2)} km)
+                                    <span class="text-sm text-gray-500">(${cafe.lat.toFixed(6)}, ${cafe.lng.toFixed(6)})</span>
+                                </li>
+                        `;
+                    });
+                    htmlContent += `
+                            </ul>
+                        </div>
+                    `;
+                }
+                // Display Study Cafes for bus terminal
+                if (data.study_cafes_list && data.study_cafes_list.length > 0) {
+                    htmlContent += `
+                        <div class="mb-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                            <h2 class="text-2xl font-semibold text-yellow-800 mb-3">📚 주변 스터디카페 (상위 5개)</h2>
+                            <ul class="list-disc pl-5 space-y-2 text-gray-700">
+                    `;
+                    data.study_cafes_list.forEach(studyCafe => {
+                        htmlContent += `
+                                <li>
+                                    <strong>${studyCafe.name}</strong> (거리: ${studyCafe.distance_km.toFixed(2)} km)
+                                    <span class="text-sm text-gray-500">(${studyCafe.lat.toFixed(6)}, ${studyCafe.lng.toFixed(6)})</span>
+                                    <button class="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
+                                            onclick="showCustomAlert('⏳ 아직은 비밀\\n조금만 기다리면 예약까지 한 번에!')">예약하기</button>
+                                </li>
+                        `;
+                    });
+                    htmlContent += `
+                            </ul>
+                        </div>
+                    `;
+                }
+
+                if (!(data.cafes_list && data.cafes_list.length > 0) && !(data.study_cafes_list && data.study_cafes_list.length > 0)) {
+                    htmlContent += `
+                        <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <h2 class="text-2xl font-semibold text-gray-800 mb-3">☕ 주변 장소</h2>
+                            <p class="text-gray-700">주변에 찾을 수 있는 카페나 스터디카페가 없습니다.</p>
+                        </div>
+                    `;
+                }
+
+            } else if (data.result_type === "direct_places" && (data.direct_nearby_places_cafes.length > 0 || data.direct_nearby_places_study_cafes.length > 0)) {
+                htmlContent += `
+                    <div class="mb-6 p-4 bg-purple-50 rounded-lg border border-purple-200">
+                        <h2 class="text-2xl font-semibold text-purple-800 mb-3">✨ 중심 지점 주변 장소 (역/터미널 없음)</h2>
+                        <p class="text-lg text-gray-700 mb-2">최적의 역(지하철/버스)을 찾을 수 없어, 중심 지점 주변의 카페/스터디카페를 찾았습니다.</p>
+                `;
+                // Display Direct Cafes
+                if (data.direct_nearby_places_cafes && data.direct_nearby_places_cafes.length > 0) {
+                    htmlContent += `
+                        <h3 class="text-xl font-semibold text-green-700 mt-4 mb-2">☕ 주변 카페 (상위 5개)</h3>
+                        <ul class="list-disc pl-5 space-y-2 text-gray-700">
+                    `;
+                    data.direct_nearby_places_cafes.forEach(cafe => {
+                        htmlContent += `
+                                <li>
+                                    <strong>${cafe.name}</strong> (거리: ${cafe.distance_km.toFixed(2)} km)
+                                    <span class="text-sm text-gray-500">(${cafe.lat.toFixed(6)}, ${cafe.lng.toFixed(6)})</span>
+                                </li>
+                        `;
+                    });
+                    htmlContent += `
+                        </ul>
+                    `;
+                }
+                // Display Direct Study Cafes
+                if (data.direct_nearby_places_study_cafes && data.direct_nearby_places_study_cafes.length > 0) {
+                    htmlContent += `
+                        <h3 class="text-xl font-semibold text-yellow-700 mt-4 mb-2">📚 주변 스터디카페 (상위 5개)</h3>
+                        <ul class="list-disc pl-5 space-y-2 text-gray-700">
+                    `;
+                    data.direct_nearby_places_study_cafes.forEach(studyCafe => {
+                        htmlContent += `
+                                <li>
+                                    <strong>${studyCafe.name}</strong> (거리: ${studyCafe.distance_km.toFixed(2)} km)
+                                    <span class="text-sm text-gray-500">(${studyCafe.lat.toFixed(6)}, ${studyCafe.lng.toFixed(6)})</span>
+                                    <button class="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
+                                            onclick="showCustomAlert('⏳ 아직은 비밀\\n조금만 기다리면 예약까지 한 번에!')">예약하기</button>
+                                </li>
+                        `;
+                    });
+                    htmlContent += `
+                        </ul>
+                    `;
+                }
+                htmlContent += `</div>`; // Close the main div for direct_places
+
+            } else if (data.result_type === "no_places_found") {
                 htmlContent += `
                     <p class="text-red-600 text-lg font-medium text-center p-4 bg-red-50 rounded-lg border border-red-200">
-                        ${data.message}
+                        죄송합니다. 적절한 미팅 장소나 주변 편의 시설을 찾을 수 없습니다.
                     </p>
                 `;
             } else {

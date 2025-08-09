@@ -1,7 +1,7 @@
 import math
 import time
 import requests
-from flask import Flask, render_template, request, jsonify # Import jsonify for JSON responses
+from flask import Flask, render_template, request, jsonify
 import json
 import os 
 
@@ -12,15 +12,14 @@ def index():
     """Renders the main page with a form to input coordinates."""
     return render_template('index.html')
 
-@app.route('/api/find_places', methods=['POST']) # Changed route to API endpoint
+@app.route('/api/find_places', methods=['POST'])
 def find_places_api():
     """
     Processes the submitted coordinates, runs the pipeline, and returns results as JSON.
     Handles potential errors during coordinate parsing or pipeline execution.
     """
     coords_json_text = request.form['coords_json']
-    # Extract lambda value from form data
-    lambda_value = float(request.form.get('lambda', 0.7)) # Default to 0.7 if not provided or invalid
+    lambda_value = float(request.form.get('lambda', 0.7)) 
 
     origins = []
     
@@ -39,25 +38,21 @@ def find_places_api():
         return jsonify({"error": "At least one origin coordinate must be selected."}), 400
 
     try:
-        # Pass the lambda_value to the pipeline function
         result_data = pipeline(origins, lam=lambda_value) 
-        # Ensure 'best_station' and 'cafes_top10' are properly handled if None
-        if result_data.get("best_station") is None:
-            # If no best station found, return a specific message
-            return jsonify({"message": "Could not find a suitable meeting station based on the provided origins.", "data": result_data}), 200
         
-        # Return the structured result data as JSON
+        if result_data.get("result_type") == "error":
+            return jsonify({"error": result_data.get("message", "An unknown error occurred.")}), 500
+
         return jsonify(result_data), 200
     except Exception as e:
         print(f"Error during pipeline execution: {e}")
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
 
 # ===== Configuration Values =====
-# Your Google API key is directly embedded here as requested.
 GOOGLE_API_KEY = "AIzaSyD1gcVpxIcq6YyezPIbXpos51yiDlH5LyQ"
 
-
-LAMBDA = 0.7 # This default is now overridden by the value from the form
+# Default lambda is 0.7, but overridden by user input from slider
+LAMBDA = 0.7 
 GRID_SPACING_DEG = 0.002
 MARGIN_DEG = 0.01
 
@@ -71,11 +66,16 @@ def haversine_km(lat1, lon1, lat2, lon2):
          math.cos(math.radians(lat1))*math.cos(math.radians(lat2))*math.sin(dlon/2)**2)
     return R * 2 * math.asin(math.sqrt(a))
 
-def weighted_score(values, lam=LAMBDA): # lam parameter will now come from the pipeline call
-    """Calculates a weighted score: score = λ * max_value + (1 - λ) * avg_value."""
+def weighted_score(values, lam): # lam parameter is passed from pipeline/best_point/best_station_by_time
+    """
+    Calculates a weighted score: score = (1 - λ) * max_value + λ * avg_value.
+    - If lambda is 0 (Equality): score = 1 * max_value + 0 * avg_value = max_value (minimize max distance/time)
+    - If lambda is 1 (Efficiency): score = 0 * max_value + 1 * avg_value = avg_value (minimize average distance/time)
+    """
     if not values:
         return float("inf")
-    return lam * max(values) + (1 - lam) * (sum(values)/len(values))
+    # Reversed weighting as requested: (1 - lam) for max_value (equality), lam for avg_value (efficiency)
+    return (1 - lam) * max(values) + lam * (sum(values)/len(values))
 
 # ===== Step 1-3: Generate grid candidates within origins bbox and find best point by distance =====
 def make_grid_candidates(origins, spacing_deg=GRID_SPACING_DEG, margin_deg=MARGIN_DEG):
@@ -104,7 +104,7 @@ def make_grid_candidates(origins, spacing_deg=GRID_SPACING_DEG, margin_deg=MARGI
         lat += spacing_deg
     return grid
 
-def best_point_by_distance(origins, grid_pts, lam=LAMBDA): # lam parameter will now come from the pipeline call
+def best_point_by_distance(origins, grid_pts, lam): # lam parameter is passed from pipeline
     """
     Finds the best point from the grid based on the weighted distance score
     to all origin points.
@@ -123,18 +123,29 @@ def best_point_by_distance(origins, grid_pts, lam=LAMBDA): # lam parameter will 
     return best
 
 # ===== Step 4: Get transit stations within radius of the best point (Places Nearby) =====
-def places_nearby(lat, lng, radius_m, type_name, api_key=GOOGLE_API_KEY):
+# Modified places_nearby to accept keyword
+def places_nearby(lat, lng, radius_m, type_name=None, keyword=None, api_key=GOOGLE_API_KEY):
     """
-    Performs a Google Places Nearby Search to find places of a specified type
-    around a given location. Handles pagination to collect multiple pages of results.
+    Performs a Google Places Nearby Search to find places.
+    Can specify type, keyword, or both.
+    Handles pagination to collect multiple pages of results.
     """
     url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
     params = {
         "location": f"{lat},{lng}",
         "radius": radius_m,
-        "type": type_name,
         "key": api_key,
     }
+    if type_name:
+        params["type"] = type_name
+    if keyword:
+        params["keyword"] = keyword
+    
+    # Google Places API requires either type or keyword for Nearby Search
+    if not type_name and not keyword:
+        # Fallback to a very general type if neither specified, to avoid API error
+        params["type"] = "point_of_interest" # Or "establishment"
+
     results = []
     page_count = 0
     while True:
@@ -145,15 +156,15 @@ def places_nearby(lat, lng, radius_m, type_name, api_key=GOOGLE_API_KEY):
             break
 
         if r.get("status") != "OK":
-            print(f"Places API error: {r.get('status')} - {r.get('error_message')}")
+            print(f"Places API error for type {type_name} / keyword {keyword}: {r.get('status')} - {r.get('error_message')}")
             break
 
         results.extend(r.get("results", []))
         next_token = r.get("next_page_token")
-        if not next_token or page_count >= 2:
+        if not next_token or page_count >= 2: # Max 3 pages (initial + 2 next_page_tokens)
             break
         page_count += 1
-        time.sleep(2.0)
+        time.sleep(2.0) # Wait for next_page_token to become active (Google API requirement)
         params["pagetoken"] = next_token
 
     cleaned = []
@@ -164,12 +175,13 @@ def places_nearby(lat, lng, radius_m, type_name, api_key=GOOGLE_API_KEY):
                 "name": it.get("name"),
                 "lat": loc["lat"],
                 "lng": loc["lng"],
-                "place_id": it.get("place_id")
+                "place_id": it.get("place_id"),
+                "types": it.get("types", []) # Include types for front-end differentiation
             })
     return cleaned
 
 def get_transit_stations_within_radius_expand(best_lat, best_lng, api_key=GOOGLE_API_KEY,
-                                             start_km=1, max_km=5, min_count=5):
+                                             start_km=1, max_km=10, min_count=5): # Max radius now 10km
     """
     Searches for subway and train stations around a given point,
     expanding the search radius until a minimum count of stations is found
@@ -199,6 +211,68 @@ def get_transit_stations_within_radius_expand(best_lat, best_lng, api_key=GOOGLE
         radius_km += 1
 
     return stations, radius_km
+
+def get_best_bus_terminal(center_lat, center_lng, api_key=GOOGLE_API_KEY, start_km=1, max_km=5):
+    """
+    Searches for bus terminals around a given point, expanding the search radius.
+    Returns the closest bus terminal found.
+    """
+    radius_km = start_km
+    best_terminal = None
+    min_dist = float('inf')
+
+    while radius_km <= max_km:
+        bus_stations = places_nearby(center_lat, center_lng, radius_m=radius_km*1000,
+                                     type_name="bus_station", api_key=api_key)
+        
+        for bs in bus_stations:
+            dist = haversine_km(center_lat, center_lng, bs["lat"], bs["lng"])
+            if dist < min_dist:
+                min_dist = dist
+                best_terminal = {**bs, "distance_km": dist} # Add distance_km to the dict
+        
+        if best_terminal: # If any terminal found in current radius, return the closest one
+            return best_terminal, radius_km
+        
+        radius_km += 1
+    
+    return None, 0 # No bus terminal found
+
+# Modified get_nearby_places_sorted_by_distance to accept search_configs
+def get_nearby_places_sorted_by_distance(center_lat, center_lng, search_configs, radius_m=1000, limit=10, api_key=GOOGLE_API_KEY):
+    """
+    Finds places based on a list of search configurations (type and/or keyword),
+    within a radius of the given center, sorted by their distance from the center.
+    Each config in search_configs should be a dict like {"type": "cafe"} or {"type": "point_of_interest", "keyword": "스터디"}.
+    """
+    if not search_configs:
+        return []
+
+    all_places_raw = []
+    seen_place_ids = set()
+
+    for config in search_configs:
+        type_to_search = config.get("type")
+        keyword_to_search = config.get("keyword")
+        
+        places_from_config = places_nearby(center_lat, center_lng, radius_m=radius_m, 
+                                           type_name=type_to_search, keyword=keyword_to_search, api_key=api_key)
+        for p in places_from_config:
+            pid = p.get("place_id")
+            if pid and pid not in seen_place_ids:
+                all_places_raw.append(p)
+                seen_place_ids.add(pid)
+    
+    cleaned_places = []
+    for p in all_places_raw:
+        if 'types' not in p:
+            p['types'] = [] 
+        
+        p["distance_km"] = haversine_km(center_lat, center_lng, p["lat"], p["lng"])
+        cleaned_places.append(p)
+    
+    cleaned_places.sort(key=lambda x: x["distance_km"])
+    return cleaned_places[:limit]
 
 
 # ===== Step 5: Select the best station based on weighted travel time (Distance Matrix) =====
@@ -243,7 +317,7 @@ def distance_matrix_times_minutes(origins, destinations, mode="transit", api_key
         times.append(row_times)
     return times
 
-def best_station_by_time(origins, stations, lam=LAMBDA, mode="transit", api_key=GOOGLE_API_KEY): # lam parameter will now come from the pipeline call
+def best_station_by_time(origins, stations, lam, mode="transit", api_key=GOOGLE_API_KEY):
     """
     Finds the best station from a list of candidates based on the weighted travel
     time from all origins to that station.
@@ -285,54 +359,95 @@ def best_station_by_time(origins, stations, lam=LAMBDA, mode="transit", api_key=
             }
     return best
 
-# ===== Step 6: Get top 10 cafes within 1km of the selected station, sorted by distance =====
-def top10_cafes_within_1km_sorted_by_distance(station, api_key=GOOGLE_API_KEY):
-    """
-    Finds up to 10 cafes within a 1km radius of the given station,
-    sorted by their distance from the station.
-    """
-    if not station:
-        return []
-
-    cafes = places_nearby(station["lat"], station["lng"], radius_m=1000, type_name="cafe", api_key=api_key)
-    for c in cafes:
-        c["distance_km"] = haversine_km(station["lat"], station["lng"], c["lat"], c["lng"])
-    cafes.sort(key=lambda x: x["distance_km"])
-    return cafes[:10]
-
 # ===== Main Pipeline Function =====
 def pipeline(origins, lam=LAMBDA, grid_spacing_deg=GRID_SPACING_DEG, margin_deg=MARGIN_DEG,
-             travel_mode="transit", api_key=GOOGLE_API_KEY): # lam is now a parameter
+             travel_mode="transit", api_key=GOOGLE_API_KEY):
     """
     Orchestrates the entire process of finding the optimal meeting point,
-    then the best nearby transit station, and finally top 10 cafes near that station.
+    with fallbacks to bus terminals or direct cafes if transit stations are not found.
     """
+    result_type = None 
+    found_main_place = None 
+    cafes_list = []
+    study_cafes_list = []
+
+    # Step 1-3: Find best geographical point based on distance
     best_point = best_point_by_distance(origins,
                                         make_grid_candidates(origins, spacing_deg=grid_spacing_deg, margin_deg=margin_deg),
-                                        lam=lam) # Pass lam to best_point_by_distance
+                                        lam=lam)
     if not best_point:
         print("Could not find a best geographical point.")
-        return {"best_point": None, "candidate_station_count": 0, "best_station": None, "cafes_top10": []}
+        return {"result_type": "error", "message": "유효한 출발 지점에서 중심 지점을 찾을 수 없습니다."}
 
-    stations, used_radius = get_transit_stations_within_radius_expand(
+    # --- Try 1: Find best Transit Station (Subway/Train) ---
+    print("Trying to find best transit station...")
+    stations, used_station_radius = get_transit_stations_within_radius_expand(
         best_point["lat"], best_point["lng"], api_key=api_key,
-        start_km=1, max_km=5, min_count=5
+        start_km=1, max_km=10, min_count=5 # Max radius now 10km
     )
+    best_station = best_station_by_time(origins, stations, lam=lam, mode=travel_mode, api_key=api_key)
 
-    best_station = best_station_by_time(origins, stations, lam=lam, mode=travel_mode, api_key=api_key) # Pass lam to best_station_by_time
-
-    cafes_top10 = []
     if best_station:
-        cafes_top10 = top10_cafes_within_1km_sorted_by_distance(best_station, api_key=api_key)
+        result_type = "transit_station"
+        found_main_place = best_station
+        # Get cafes and study cafes separately by type and keyword
+        cafes_list = get_nearby_places_sorted_by_distance(
+            best_station["lat"], best_station["lng"], [{"type": "cafe"}], radius_m=1000, limit=5, api_key=api_key
+        )
+        # Search study cafes by keyword '스터디' in point_of_interest type
+        study_cafes_list = get_nearby_places_sorted_by_distance(
+            best_station["lat"], best_station["lng"], [{"type": "point_of_interest", "keyword": "스터디"}], radius_m=1000, limit=5, api_key=api_key
+        )
+        print(f"Found best transit station: {found_main_place['name']}")
     else:
-        print("No best station found, skipping cafe search.")
+        print("No best transit station found. Trying bus terminals...")
+        # --- Try 2: Find best Bus Terminal if no Transit Station ---
+        best_bus_terminal, used_bus_radius = get_best_bus_terminal(
+            best_point["lat"], best_point["lng"], api_key=api_key, start_km=1, max_km=5
+        )
 
-    return {
-        "best_point": best_point,
-        "candidate_station_count": len(stations),
-        "best_station": best_station,
-        "cafes_top10": cafes_top10
+        if best_bus_terminal:
+            result_type = "bus_terminal"
+            found_main_place = best_bus_terminal
+            # Get cafes and study cafes separately for bus terminal
+            cafes_list = get_nearby_places_sorted_by_distance(
+                best_bus_terminal["lat"], best_bus_terminal["lng"], [{"type": "cafe"}], radius_m=1000, limit=5, api_key=api_key
+            )
+            # Search study cafes by keyword '스터디' in point_of_interest type
+            study_cafes_list = get_nearby_places_sorted_by_distance(
+                best_bus_terminal["lat"], best_bus_terminal["lng"], [{"type": "point_of_interest", "keyword": "스터디"}], radius_m=1000, limit=5, api_key=api_key
+            )
+            print(f"Found best bus terminal: {found_main_place['name']}")
+        else:
+            print("No bus terminal found. Falling back to direct cafes/study cafes around best geographical point.")
+            # --- Try 3: Fallback to direct Cafes/Study Cafes around best_point ---
+            result_type = "direct_places"
+            found_main_place = best_point # In this case, best_point is the meeting point center
+            # Get cafes and study cafes separately for direct places
+            cafes_list = get_nearby_places_sorted_by_distance(
+                best_point["lat"], best_point["lng"], [{"type": "cafe"}], radius_m=1000, limit=5, api_key=api_key
+            )
+            # Search study cafes by keyword '스터디' in point_of_interest type
+            study_cafes_list = get_nearby_places_sorted_by_distance(
+                best_point["lat"], best_point["lng"], [{"type": "point_of_interest", "keyword": "스터디"}], radius_m=1000, limit=5, api_key=api_key
+            )
+            if not cafes_list and not study_cafes_list:
+                print("No cafes or study cafes found near the best geographical point.")
+                result_type = "no_places_found" # Ultimate fallback if nothing is found
+
+    final_result = {
+        "result_type": result_type,
+        "best_point": best_point, # This is the initial geographical best point
+        "best_station": found_main_place if result_type == "transit_station" else None,
+        "best_bus_terminal": found_main_place if result_type == "bus_terminal" else None,
+        "direct_nearby_places_cafes": cafes_list if result_type == "direct_places" else [],
+        "direct_nearby_places_study_cafes": study_cafes_list if result_type == "direct_places" else [],
+        "cafes_list": cafes_list if result_type == "transit_station" or result_type == "bus_terminal" else [],
+        "study_cafes_list": study_cafes_list if result_type == "transit_station" or result_type == "bus_terminal" else [],
+        "message": "" 
     }
+    
+    return final_result
 
 if __name__ == "__main__":
     print(" * Flask app starting on http://0.0.0.0:5000")
@@ -341,4 +456,3 @@ if __name__ == "__main__":
     print("    1. Find your computer's local IP address (e.g., run 'ipconfig' on Windows or 'ifconfig' on macOS/Linux).")
     print("    2. On your device, open a browser and go to http://YOUR_COMPUTERS_IP:5000")
     app.run(host='0.0.0.0', port=5000, debug=True)
-
