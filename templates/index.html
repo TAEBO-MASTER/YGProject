@@ -74,7 +74,7 @@
         <form id="locationForm" class="space-y-4">
             <div>
                 <label for="map" class="block text-gray-700 text-sm font-semibold mb-2">
-                    지도를 클릭하여 출발지 위치를 선택하세요 (여러 곳 선택 가능)
+                    지도를 클릭하여 출발지 위치를 선택하세요 (한 번 더 클릭하여 제거)
                 </label>
                 <div id="map"></div>
                 <input type="hidden" name="coords_json" id="coords_json">
@@ -155,6 +155,10 @@
             }, 3000); 
         }
 
+        function updateCoordsJson() {
+            document.getElementById("coords_json").value = JSON.stringify(originCoords);
+        }
+        
         function initMap() {
             const seoul = { lat: 37.5665, lng: 126.9780 };
             map = new google.maps.Map(document.getElementById("map"), {
@@ -181,7 +185,13 @@
         }
 
         function useCurrentLocation() {
-            document.getElementById("currentLocationLoading").classList.remove("hidden");
+            const loadingIndicatorDiv = document.getElementById("currentLocationLoading");
+            const loadingTextSpan = loadingIndicatorDiv.querySelector("span"); // 스피너와 텍스트를 감싸는 span 태그를 가져옵니다.
+
+            // 초기 상태: '현위치 확인 중...' 문구와 스피너 표시
+            loadingTextSpan.textContent = "현위치 확인 중...";
+            loadingIndicatorDiv.classList.remove("hidden");
+
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
@@ -189,23 +199,29 @@
                             lat: position.coords.latitude,
                             lng: position.coords.longitude,
                         };
-                        addOriginMarker(pos);
+                        addOriginMarker(pos); // 핀 추가 함수 호출
                         map.setCenter(pos);
                         map.setZoom(14);
-                        document.getElementById("currentLocationLoading").classList.add("hidden");
+
+                        // 성공 메시지 표시 후 2초 뒤 숨김
+                        loadingTextSpan.textContent = "현위치 입력 완료! ✅";
+                        setTimeout(() => {
+                            loadingIndicatorDiv.classList.add("hidden");
+                        }, 2000); // 2초 후 숨김
                     },
                     (error) => {
-                        document.getElementById("currentLocationLoading").classList.add("hidden");
+                        // 오류 발생 시 즉시 숨김
+                        loadingIndicatorDiv.classList.add("hidden");
                         let errorMessage = "현위치를 가져올 수 없습니다.";
                         switch (error.code) {
                             case error.PERMISSION_DENIED:
-                                errorMessage = "위치 정보 사용 권한이 거부되었습니다.";
+                                errorMessage = "위치 정보 사용 권한이 거부되었습니다. 브라우저 설정에서 위치 정보 접근을 허용해주세요.";
                                 break;
                             case error.POSITION_UNAVAILABLE:
-                                errorMessage = "위치 정보를 사용할 수 없습니다.";
+                                errorMessage = "위치 정보를 사용할 수 없습니다. 잠시 후 다시 시도해주세요.";
                                 break;
                             case error.TIMEOUT:
-                                errorMessage = "위치 정보를 가져오는 시간이 초과되었습니다.";
+                                errorMessage = "위치 정보를 가져오는 시간이 초과되었습니다. 안정적인 네트워크에서 다시 시도해주세요.";
                                 break;
                         }
                         alert(errorMessage);
@@ -213,31 +229,68 @@
                     }
                 );
             } else {
-                document.getElementById("currentLocationLoading").classList.add("hidden");
+                // 브라우저가 지원하지 않을 경우 즉시 숨김
+                loadingIndicatorDiv.classList.add("hidden");
                 alert("이 브라우저는 현위치 기능을 지원하지 않습니다.");
             }
         }
 
         function addOriginMarker(location) {
+            // 정확히 같은 위치에 중복 핀이 찍히는 것을 방지
+            const isDuplicate = originCoords.some(coord =>
+                Math.abs(coord.lat - location.lat()) < 1e-6 && Math.abs(coord.lng - location.lng()) < 1e-6
+            );
+
+            if (isDuplicate) {
+                console.log("동일한 위치에 핀을 추가하려는 시도를 무시합니다.");
+                return; // 중복이면 추가하지 않고 함수 종료
+            }
+
             const marker = new google.maps.Marker({
                 position: location,
                 map: map,
                 icon: {
                     url: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
-                }
+                },
+                clickable: true // 마커 클릭 가능하도록 설정
             });
+
             originMarkers.push(marker);
             originCoords.push({ lat: location.lat(), lng: location.lng() });
+            updateCoordsJson(); // hidden input 업데이트
+
+            // **새로운 기능: 마커 클릭 시 개별 삭제**
+            marker.addListener("click", () => {
+                // 이 마커가 originMarkers 배열의 몇 번째인지 찾습니다.
+                const index = originMarkers.indexOf(marker);
+                if (index > -1) {
+                    // 지도에서 마커 제거
+                    marker.setMap(null);
+
+                    // 배열에서 마커와 해당 좌표 제거
+                    originMarkers.splice(index, 1);
+                    originCoords.splice(index, 1);
+
+                    updateCoordsJson(); // hidden input 업데이트
+                    console.log("마커가 제거되었습니다. 현재 선택된 출발지 좌표:", originCoords);
+
+                    // 만약 이 마커의 정보창이 열려있다면 닫습니다.
+                    if (infoWindow && infoWindow.getMap() === map) {
+                        infoWindow.close();
+                    }
+                }
+            });
+
             console.log("현재 선택된 출발지 좌표:", originCoords);
         }
 
         function clearOriginMarkers() {
             for (let i = 0; i < originMarkers.length; i++) {
-                originMarkers[i].setMap(null);
+                originMarkers[i].setMap(null); // 지도에서 모든 마커 제거
             }
-            originMarkers = [];
-            originCoords = [];
-            document.getElementById("coords_json").value = "";
+            originMarkers = []; // 마커 배열 비우기
+            originCoords = []; // 좌표 배열 비우기
+            updateCoordsJson(); // hidden input 업데이트
             console.log("모든 출발지 핀이 제거되었습니다.");
         }
 
