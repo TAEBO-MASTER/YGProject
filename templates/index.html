@@ -85,7 +85,14 @@
                 📍 현위치로 입력
             </button>
             <div id="currentLocationLoading" class="hidden text-center text-indigo-600 font-semibold mb-2">
-                현위치 확인 중...
+                <!-- 스피너 SVG와 텍스트를 <span>으로 감싸서 JS가 찾을 수 있도록 함 -->
+                <div class="flex items-center justify-center space-x-2">
+                    <svg class="animate-spin h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>현위치 확인 중...</span> <!-- 이 부분이 핵심 수정: 텍스트를 <span>으로 감쌈 -->
+                </div>
             </div>
 
             <button type="button" id="clearMarkersBtn"
@@ -103,10 +110,10 @@
                         <span class="font-bold text-blue-700 text-lg">평등</span>
                         <span class="font-bold text-green-700 text-lg">효율</span>
                     </div>
-                    <input type="range" id="lambdaSlider" name="lambda" min="0" max="1" step="0.1" value="0.7"
+                    <input type="range" id="lambdaSlider" name="lambda" min="0" max="1" step="0.1" value="0.5"
                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer range-lg">
                     <span class="block text-center text-lg font-medium text-gray-800 mt-1">
-                        가중치 (λ): <span id="lambdaValue">0.7</span>
+                        가중치 (λ): <span id="lambdaValue">0.5</span> <!-- 초기값도 0.5로 수정 -->
                     </span>
                 </label>
             </div>
@@ -169,8 +176,9 @@
             infoWindow = new google.maps.InfoWindow();
             directionsService = new google.maps.DirectionsService();
 
+            // 지도 클릭 이벤트 리스너: 클릭 시 마커 추가 (LatLng 객체를 일반 객체로 변환하여 전달)
             map.addListener("click", (e) => {
-                addOriginMarker(e.latLng);
+                addOriginMarker({ lat: e.latLng.lat(), lng: e.latLng.lng() });
             });
 
             document.getElementById("clearMarkersBtn").addEventListener("click", clearOriginMarkers);
@@ -186,11 +194,13 @@
 
         function useCurrentLocation() {
             const loadingIndicatorDiv = document.getElementById("currentLocationLoading");
-            const loadingTextSpan = loadingIndicatorDiv.querySelector("span"); // 스피너와 텍스트를 감싸는 span 태그를 가져옵니다.
+            const loadingTextSpan = loadingIndicatorDiv.querySelector("span");
+            const spinnerSvg = loadingIndicatorDiv.querySelector("svg");
 
-            // 초기 상태: '현위치 확인 중...' 문구와 스피너 표시
+            // 초기 상태: '현위치 확인 중...' 문구 표시
             loadingTextSpan.textContent = "현위치 확인 중...";
-            loadingIndicatorDiv.classList.remove("hidden");
+            spinnerSvg.classList.remove("hidden"); // 스피너 표시
+            loadingIndicatorDiv.classList.remove("hidden"); // 로딩 인디케이터 표시
 
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
@@ -200,14 +210,17 @@
                             lng: position.coords.longitude,
                         };
                         addOriginMarker(pos); // 핀 추가 함수 호출
-                        map.setCenter(pos);
+                        map.panTo(pos);
                         map.setZoom(14);
 
-                        // 성공 메시지 표시 후 2초 뒤 숨김
+                        // ✨ 수정된 부분: 핀 추가 및 지도 업데이트 직후 '입력 완료' 메시지로 변경
+                        spinnerSvg.classList.add("hidden"); // 스피너 숨김
                         loadingTextSpan.textContent = "현위치 입력 완료! ✅";
+                        
+                        // 그 다음 2초 뒤 로딩 인디케이터를 숨김
                         setTimeout(() => {
                             loadingIndicatorDiv.classList.add("hidden");
-                        }, 2000); // 2초 후 숨김
+                        }, 5000); // "입력 완료" 메시지가 2초간 보인 후 사라짐
                     },
                     (error) => {
                         // 오류 발생 시 즉시 숨김
@@ -236,9 +249,9 @@
         }
 
         function addOriginMarker(location) {
-            // 정확히 같은 위치에 중복 핀이 찍히는 것을 방지
+            // 이제 location은 항상 {lat: value, lng: value} 형태의 일반 객체이므로 .lat, .lng로 직접 접근
             const isDuplicate = originCoords.some(coord =>
-                Math.abs(coord.lat - location.lat()) < 1e-6 && Math.abs(coord.lng - location.lng()) < 1e-6
+                Math.abs(coord.lat - location.lat) < 1e-6 && Math.abs(coord.lng - location.lng) < 1e-6
             );
 
             if (isDuplicate) {
@@ -247,7 +260,7 @@
             }
 
             const marker = new google.maps.Marker({
-                position: location,
+                position: location, // location은 이미 {lat, lng} 형태이므로 그대로 사용 가능
                 map: map,
                 icon: {
                     url: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
@@ -256,7 +269,7 @@
             });
 
             originMarkers.push(marker);
-            originCoords.push({ lat: location.lat(), lng: location.lng() });
+            originCoords.push({ lat: location.lat, lng: location.lng }); // ✨ 수정된 부분: location.lat(), location.lng() -> location.lat, location.lng
             updateCoordsJson(); // hidden input 업데이트
 
             // **새로운 기능: 마커 클릭 시 개별 삭제**
