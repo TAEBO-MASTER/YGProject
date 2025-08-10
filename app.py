@@ -78,10 +78,17 @@ def weighted_score(values, lam): # lam parameter is passed from pipeline/best_po
     return (1 - lam) * max(values) + lam * (sum(values)/len(values))
 
 # ===== Step 1-3: Generate grid candidates within origins bbox and find best point by distance =====
-def make_grid_candidates(origins, spacing_deg=GRID_SPACING_DEG, margin_deg=MARGIN_DEG):
+# ===== Step 1-3: Generate grid candidates with a fixed count (e.g., ~10k) =====
+def make_grid_candidates_fixed_count(
+    origins,
+    target_points=10000,         # ≈ 100 x 100
+    margin_deg=MARGIN_DEG,
+    min_per_side=50,             # 너무 거칠지 않도록 하한
+    max_per_side=250             # 과도한 계산 방지 상한
+):
     """
-    Generates a grid of candidate points within the bounding box of the origins,
-    with an added margin.
+    Bounding box 내부에 '점의 개수'를 고정해 균등 분포 시드 포인트를 생성합니다.
+    bbox 종횡비를 유지하도록 행/열 수를 계산하고, 각 셀의 중심에 점을 둡니다.
     """
     if not origins:
         return []
@@ -91,17 +98,26 @@ def make_grid_candidates(origins, spacing_deg=GRID_SPACING_DEG, margin_deg=MARGI
     min_lat, max_lat = min(lats) - margin_deg, max(lats) + margin_deg
     min_lng, max_lng = min(lngs) - margin_deg, max(lngs) + margin_deg
 
-    if min_lat > max_lat: min_lat, max_lat = max_lat, min_lat
-    if min_lng > max_lng: min_lng, max_lng = max_lng, min_lng
+    height = max(max_lat - min_lat, 1e-9)
+    width  = max(max_lng - min_lng, 1e-9)
+
+    # bbox 종횡비(행/열 비율)에 맞춰 행/열 결정
+    aspect = height / width
+    n_rows = int(round(math.sqrt(target_points * aspect)))
+    n_rows = max(2, min(max_per_side, max(min_per_side, n_rows)))
+    n_cols = max(2, min(max_per_side, max(min_per_side, int(round(target_points / n_rows)))))
+
+    # 셀 중심점으로 균등 샘플링 (경계 포함 대신 중심 사용)
+    lat_step = height / n_rows
+    lng_step = width  / n_cols
 
     grid = []
-    lat = min_lat
-    while lat <= max_lat:
-        lng = min_lng
-        while lng <= max_lng:
+    for r in range(n_rows):
+        lat = min_lat + (r + 0.5) * lat_step
+        for c in range(n_cols):
+            lng = min_lng + (c + 0.5) * lng_step
             grid.append({"lat": lat, "lng": lng})
-            lng += spacing_deg
-        lat += spacing_deg
+
     return grid
 
 def best_point_by_distance(origins, grid_pts, lam): # lam parameter is passed from pipeline
@@ -373,7 +389,7 @@ def pipeline(origins, lam=LAMBDA, grid_spacing_deg=GRID_SPACING_DEG, margin_deg=
 
     # Step 1-3: Find best geographical point based on distance
     best_point = best_point_by_distance(origins,
-                                        make_grid_candidates(origins, spacing_deg=grid_spacing_deg, margin_deg=margin_deg),
+                                        make_grid_candidates_fixed_count(origins, target_points=10000, margin_deg=margin_deg),
                                         lam=lam)
     if not best_point:
         print("Could not find a best geographical point.")
