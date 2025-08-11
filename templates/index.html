@@ -221,7 +221,7 @@
                 addOriginMarker({ lat: e.latLng.lat(), lng: e.latLng.lng() });
             });
 
-            document.getElementById("resetBtn").addEventListener("click", clearOriginMarkers);
+            document.getElementById("resetBtn").addEventListener("click", resetMap);
             document.getElementById("locationForm").addEventListener("submit", handleFormSubmit);
             document.getElementById("useCurrentLocationBtn").addEventListener("click", useCurrentLocation);
 
@@ -304,8 +304,6 @@
 
         // 3) 결과 패널/로딩/히든 값 초기화
         const results = document.getElementById("resultsDisplay");
-        results.innerHTML = "";
-        results.classList.add("hidden");
         document.getElementById("coords_json").value = "[]";
 
         // 4) 커스텀 알럿 닫기
