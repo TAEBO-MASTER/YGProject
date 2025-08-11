@@ -4,6 +4,12 @@ import requests
 from flask import Flask, render_template, request, jsonify
 import json
 import os 
+from dotenv import load_dotenv
+
+load_dotenv()
+SERVER_KEY = os.getenv("GOOGLE_SERVER_API_KEY")
+if not SERVER_KEY:
+    raise RuntimeError("환경변수 GOOGLE_SERVER_API_KEY가 없습니다.")
 
 app = Flask(__name__)
 
@@ -47,9 +53,6 @@ def find_places_api():
     except Exception as e:
         print(f"Error during pipeline execution: {e}")
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
-
-# ===== Configuration Values =====
-GOOGLE_API_KEY = "AIzaSyD1gcVpxIcq6YyezPIbXpos51yiDlH5LyQ"
 
 # Default lambda is 0.7, but overridden by user input from slider
 LAMBDA = 0.7 
@@ -140,7 +143,7 @@ def best_point_by_distance(origins, grid_pts, lam): # lam parameter is passed fr
 
 # ===== Step 4: Get transit stations within radius of the best point (Places Nearby) =====
 # Modified places_nearby to accept keyword
-def places_nearby(lat, lng, radius_m, type_name=None, keyword=None, api_key=GOOGLE_API_KEY):
+def places_nearby(lat, lng, radius_m, type_name=None, keyword=None, api_key=SERVER_KEY):
     """
     Performs a Google Places Nearby Search to find places.
     Can specify type, keyword, or both.
@@ -166,7 +169,7 @@ def places_nearby(lat, lng, radius_m, type_name=None, keyword=None, api_key=GOOG
     page_count = 0
     while True:
         try:
-            r = requests.get(url, params=params).json()
+            r = requests.get(url, params=params, timeout=(5,15)).json()
         except requests.exceptions.RequestException as e:
             print(f"Error making Places API request: {e}")
             break
@@ -196,7 +199,7 @@ def places_nearby(lat, lng, radius_m, type_name=None, keyword=None, api_key=GOOG
             })
     return cleaned
 
-def get_transit_stations_within_radius_expand(best_lat, best_lng, api_key=GOOGLE_API_KEY,
+def get_transit_stations_within_radius_expand(best_lat, best_lng, api_key=SERVER_KEY,
                                              start_km=1, max_km=10, min_count=5): # Max radius now 10km
     """
     Searches for subway and train stations around a given point,
@@ -228,7 +231,7 @@ def get_transit_stations_within_radius_expand(best_lat, best_lng, api_key=GOOGLE
 
     return stations, radius_km
 
-def get_best_bus_terminal(center_lat, center_lng, api_key=GOOGLE_API_KEY, start_km=1, max_km=5):
+def get_best_bus_terminal(center_lat, center_lng, api_key=SERVER_KEY, start_km=1, max_km=5):
     """
     Searches for bus terminals around a given point, expanding the search radius.
     Returns the closest bus terminal found.
@@ -255,7 +258,7 @@ def get_best_bus_terminal(center_lat, center_lng, api_key=GOOGLE_API_KEY, start_
     return None, 0 # No bus terminal found
 
 # Modified get_nearby_places_sorted_by_distance to accept search_configs
-def get_nearby_places_sorted_by_distance(center_lat, center_lng, search_configs, radius_m=1000, limit=10, api_key=GOOGLE_API_KEY):
+def get_nearby_places_sorted_by_distance(center_lat, center_lng, search_configs, radius_m=1000, limit=10, api_key=SERVER_KEY):
     """
     Finds places based on a list of search configurations (type and/or keyword),
     within a radius of the given center, sorted by their distance from the center.
@@ -292,7 +295,7 @@ def get_nearby_places_sorted_by_distance(center_lat, center_lng, search_configs,
 
 
 # ===== Step 5: Select the best station based on weighted travel time (Distance Matrix) =====
-def distance_matrix_times_minutes(origins, destinations, mode="transit", api_key=GOOGLE_API_KEY):
+def distance_matrix_times_minutes(origins, destinations, mode="transit", api_key=SERVER_KEY):
     """
     Uses Google Distance Matrix API to get travel times (in minutes)
     from multiple origins to multiple destinations.
@@ -313,7 +316,7 @@ def distance_matrix_times_minutes(origins, destinations, mode="transit", api_key
     }
     
     try:
-        r = requests.get(url, params=params).json()
+        r = requests.get(url, params=params, timeout=(5,15)).json()
     except requests.exceptions.RequestException as e:
         raise RuntimeError(f"Error making Distance Matrix API request: {e}")
 
@@ -333,7 +336,7 @@ def distance_matrix_times_minutes(origins, destinations, mode="transit", api_key
         times.append(row_times)
     return times
 
-def best_station_by_time(origins, stations, lam, mode="transit", api_key=GOOGLE_API_KEY):
+def best_station_by_time(origins, stations, lam, mode="transit", api_key=SERVER_KEY):
     """
     Finds the best station from a list of candidates based on the weighted travel
     time from all origins to that station.
@@ -377,7 +380,7 @@ def best_station_by_time(origins, stations, lam, mode="transit", api_key=GOOGLE_
 
 # ===== Main Pipeline Function =====
 def pipeline(origins, lam=LAMBDA, grid_spacing_deg=GRID_SPACING_DEG, margin_deg=MARGIN_DEG,
-             travel_mode="transit", api_key=GOOGLE_API_KEY):
+             travel_mode="transit", api_key=SERVER_KEY):
     """
     Orchestrates the entire process of finding the optimal meeting point,
     with fallbacks to bus terminals or direct cafes if transit stations are not found.
