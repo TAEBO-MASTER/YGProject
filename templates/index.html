@@ -103,6 +103,20 @@
                 <div id="map"></div>
                 <input type="hidden" name="coords_json" id="coords_json">
             </div>
+            <!-- 지도 바로 아래: 장소 검색 -->
+            <div class="mt-2">
+            <label for="placeSearch" class="sr-only">장소 검색</label>
+            <div class="flex gap-2">
+                <input id="placeSearch" type="text" placeholder="장소 이름이나 주소를 검색하세요"
+                    class="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    inputmode="search" enterkeyhint="search" />
+                <button type="button" id="addFromSearchBtn"
+                        class="shrink-0 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold px-4 py-2 rounded-lg">
+                검색으로 추가
+                </button>
+            </div>
+            </div>
+
 
             <button type="button" id="useCurrentLocationBtn"
                     class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105 mb-2">
@@ -119,9 +133,9 @@
                 </div>
             </div>
 
-            <button type="button" id="clearMarkersBtn"
+            <button type="button" id="resetBtn"
                     class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105 mb-4">
-                출발지 핀 모두 제거
+                지도 초기화
             </button>
 
             <!-- 람다(가중치) 슬라이더 -->
@@ -174,6 +188,8 @@
         let infoWindow; // 마커 클릭 시 정보 창
         let directionsService; // 경로 검색 서비스
         let directionsRenderers = []; // 경로 표시 렌더러 배열 (각 출발지마다)
+        let placesService; // 검색용 PlacesService
+        let routePolylines = []; // 버스/직접 모드에서 그린 선들을 담아두는 배열
 
         // Function to show custom alert message
         function showCustomAlert(message) {
@@ -205,7 +221,7 @@
                 addOriginMarker({ lat: e.latLng.lat(), lng: e.latLng.lng() });
             });
 
-            document.getElementById("clearMarkersBtn").addEventListener("click", clearOriginMarkers);
+            document.getElementById("resetBtn").addEventListener("click", clearOriginMarkers);
             document.getElementById("locationForm").addEventListener("submit", handleFormSubmit);
             document.getElementById("useCurrentLocationBtn").addEventListener("click", useCurrentLocation);
 
@@ -214,6 +230,86 @@
             lambdaSlider.addEventListener("input", () => {
                 lambdaValueSpan.textContent = parseFloat(lambdaSlider.value).toFixed(1);
             });
+            // --- 검색 위젯: 지도 바로 아래 입력창 ---
+            const searchInput = document.getElementById("placeSearch");
+            placesService = new google.maps.places.PlacesService(map);
+
+            // 자동완성: 드롭다운 선택 시 바로 추가
+            const autocomplete = new google.maps.places.Autocomplete(searchInput, {
+            fields: ["place_id", "geometry", "name", "formatted_address"],
+            });
+            autocomplete.bindTo("bounds", map);
+
+            autocomplete.addListener("place_changed", () => {
+            const place = autocomplete.getPlace();
+            if (!place || !place.geometry || !place.geometry.location) {
+                if (searchInput.value.trim()) textSearchAdd(searchInput.value.trim());
+                return;
+            }
+            const loc = place.geometry.location;
+            const pos = { lat: loc.lat(), lng: loc.lng() };
+            addOriginMarker(pos);
+            map.panTo(pos);
+            map.setZoom(14);
+            searchInput.value = "";
+            });
+
+            // 엔터키로도 추가(자동완성 미선택 대비)
+            searchInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                if (searchInput.value.trim()) textSearchAdd(searchInput.value.trim());
+            }
+            });
+
+            // 버튼 클릭으로 추가
+            document.getElementById("addFromSearchBtn").addEventListener("click", () => {
+            if (searchInput.value.trim()) textSearchAdd(searchInput.value.trim());
+            });
+
+            // 텍스트 검색(첫 결과를 좌표로 변환)
+            function textSearchAdd(query) {
+            placesService.textSearch(
+                { query, location: map.getCenter(), radius: 50000 }, // 필요시 반경 조정
+                (results, status) => {
+                if (status !== google.maps.places.PlacesServiceStatus.OK || !results?.length) {
+                    alert("검색 결과를 찾지 못했습니다.");
+                    return;
+                }
+                const first = results[0];
+                if (!first.geometry?.location) {
+                    alert("이 장소는 좌표가 없습니다.");
+                    return;
+                }
+                const loc = first.geometry.location;
+                const pos = { lat: loc.lat(), lng: loc.lng() };
+                addOriginMarker(pos);
+                map.panTo(pos);
+                map.setZoom(14);
+                searchInput.value = "";
+                }
+            );
+            }
+
+        }
+        function resetMap() {
+        // 1) 결과/출발지 모두 삭제
+        clearResultMarkers();
+        clearOriginMarkers();
+
+        // 2) 지도 초기 상태로
+        const seoul = { lat: 37.5665, lng: 126.9780 };
+        map.setCenter(seoul);
+        map.setZoom(12);
+
+        // 3) 결과 패널/로딩/히든 값 초기화
+        const results = document.getElementById("resultsDisplay");
+        results.innerHTML = "";
+        results.classList.add("hidden");
+        document.getElementById("coords_json").value = "[]";
+
+        // 4) 커스텀 알럿 닫기
+        document.getElementById("customAlert")?.classList.add("hidden");
         }
 
         function useCurrentLocation() {
@@ -241,7 +337,7 @@
                         spinnerSvg.classList.add("hidden"); // 스피너 숨김
                         loadingTextSpan.textContent = "현위치 입력 완료! ✅";
                         
-                        // 그 다음 2초 뒤 로딩 인디케이터를 숨김
+                        // 그 다음 5초 뒤 로딩 인디케이터를 숨김
                         setTimeout(() => {
                             loadingIndicatorDiv.classList.add("hidden");
                         }, 5000); // "입력 완료" 메시지가 2초간 보인 후 사라짐
@@ -273,6 +369,9 @@
         }
 
         function addOriginMarker(location) {
+             if (location.lat <= -60) {
+                showCustomAlert("혹시 펭귄이신가요? 🐧");
+            }
             // 이제 location은 항상 {lat: value, lng: value} 형태의 일반 객체이므로 .lat, .lng로 직접 접근
             const isDuplicate = originCoords.some(coord =>
                 Math.abs(coord.lat - location.lat) < 1e-6 && Math.abs(coord.lng - location.lng) < 1e-6
@@ -332,18 +431,29 @@
         }
 
         function clearResultMarkers() {
-            for (let i = 0; i < resultMarkers.length; i++) {
-                resultMarkers[i].setMap(null);
-            }
-            resultMarkers = [];
-            if (infoWindow) {
-                infoWindow.close();
-            }
-            for (let i = 0; i < directionsRenderers.length; i++) {
-                directionsRenderers[i].setMap(null);
-            }
-            directionsRenderers = [];
+        // 결과 마커 제거
+        for (let i = 0; i < resultMarkers.length; i++) {
+            resultMarkers[i].setMap(null);
         }
+        resultMarkers = [];
+
+        // 경로 렌더러 제거(대중교통 경로)
+        for (let i = 0; i < directionsRenderers.length; i++) {
+            directionsRenderers[i].setMap(null);
+        }
+        directionsRenderers = [];
+
+        // 직접 그린 폴리라인(버스/직접 모드) 제거
+        for (let i = 0; i < routePolylines.length; i++) {
+            routePolylines[i].setMap(null);
+        }
+        routePolylines = [];
+
+        if (infoWindow) {
+            infoWindow.close();
+        }
+        }
+
 
         async function handleFormSubmit(event) {
             event.preventDefault();
@@ -456,14 +566,16 @@
                 `;
                 // Draw simple lines for bus terminal (Directions API transit mode may be limited for bus)
                 originMarkers.forEach((originMarker, index) => {
-                     new google.maps.Polyline({
+                     const line = new google.maps.Polyline({
                         path: [originMarker.getPosition(), mainPlacePos],
                         geodesic: true,
-                        strokeColor: '#FF9800',
+                        strokeColor: '#FF9800', // 혹은 '#800080' (직접 모드)
                         strokeOpacity: 0.6,
                         strokeWeight: 2,
                         map: map
-                    });
+                        });
+                        routePolylines.push(line);
+
                 });
 
             } else if (data.result_type === "direct_places" && (data.direct_nearby_places_cafes.length > 0 || data.direct_nearby_places_study_cafes.length > 0)) {
@@ -791,6 +903,6 @@
     </script>
     <!-- YOUR_GOOGLE_MAPS_API_KEY를 실제 Google Maps API 키로 교체하세요 -->
     <!-- 반드시 Maps JavaScript API, Places API, Distance Matrix API, Directions API가 활성화되어 있어야 합니다. -->
-    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCGgZQhmNH8ooriI05CeOi60AvlOcYTHPQ&callback=initMap"></script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCGgZQhmNH8ooriI05CeOi60AvlOcYTHPQ&libraries=places&callback=initMap"></script>
 </body>
 </html>
