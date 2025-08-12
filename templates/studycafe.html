@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>스터디카페 가격순 목록</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <header class="bg-white border-b sticky top-0 z-30">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+      <a href="javascript:history.back()" class="px-3 py-1.5 rounded-lg border hover:bg-gray-50">← 뒤로</a>
+      <h1 class="text-lg font-semibold">주변 스터디카페</h1>
+      <div class="ml-auto text-sm text-gray-600 flex items-center gap-2">
+        <label>정렬</label>
+        <select id="sortSel" class="border rounded-md px-2 py-1">
+          <option value="price_asc">가격 낮은순</option>
+          <option value="price_desc">가격 높은순</option>
+          <option value="rating_desc">평점 높은순</option>
+          <option value="distance_asc" selected>거리 가까운순</option>
+
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6">
+    <div id="hint" class="text-sm text-gray-600 mb-3"></div>
+    <div id="count" class="text-sm text-gray-700 mb-3"></div>
+
+    <div id="list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+  </main>
+
+  <script>
+    const qs = new URLSearchParams(location.search);
+    const lat = Number(qs.get("lat")) || JSON.parse(localStorage.getItem("lastCenter")||"{}").lat || 37.5665;
+    const lng = Number(qs.get("lng")) || JSON.parse(localStorage.getItem("lastCenter")||"{}").lng || 126.9780;
+    const radius = Number(qs.get("radius")) || 3000;
+
+    document.getElementById("hint").textContent =
+      `검색 기준: 위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}, 반경 ${(radius/1000).toFixed(1)}km`;
+
+    function priceText(level){
+      if (level === null || level === undefined) return "가격정보 없음";
+      return "₩".repeat(Math.min(4, Math.max(1, level || 1)));
+    }
+
+    function sortItems(items, mode){
+      if (mode === "price_asc") {
+        return [...items].sort((a,b)=> fakePricePerHour(a) - fakePricePerHour(b));
+      }
+      if (mode === "price_desc") {
+        return [...items].sort((a,b)=> fakePricePerHour(b) - fakePricePerHour(a));
+      }
+      if (mode === "distance_asc") {
+        return [...items].sort((a,b)=> distanceKmToCenter(a) - distanceKmToCenter(b));
+      }
+      // rating_desc (기본)
+      return [...items].sort((a,b)=> (b.rating||0) - (a.rating||0));
+    }
+
+
+
+    function seededRand(seed) {
+      let h = 0 >>> 0;
+      for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+      return (h % 1000) / 1000; // 0..0.999
+    }
+    function fakePricePerHour(it) {
+      const seed = (it.place_id || '') + (it.name || '') + (it.address || '');
+      const r = seededRand(seed);
+      // 1,500 ~ 4,500원 (500원 단위)
+      const step = Math.round(r * 6); // 0..6
+      return 1500 + step * 500;
+    }
+    function formatWon(n) { return '₩' + Number(n).toLocaleString(); }
+
+    // ---- 거리 계산 (최적 장소 lat,lng → 각 스터디카페까지 km) ----
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371; // km
+  const toRad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * toRad;
+  const dLon = (lng2 - lng1) * toRad;
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(lat1*toRad) * Math.cos(lat2*toRad) * Math.sin(dLon/2)**2;
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+}
+
+function distanceKmToCenter(it){
+  const p = it.location || {};
+  if (typeof p.lat !== 'number' || typeof p.lng !== 'number') return Infinity;
+  return haversineKm(lat, lng, p.lat, p.lng);
+}
+
+
+    function cardHTML(it){
+      const img = it.photo_ref
+        ? `/api/place_photo?photoref=${encodeURIComponent(it.photo_ref)}&maxwidth=600`
+        : "https://via.placeholder.com/600x400.png?text=Study+Cafe";
+
+      const pricePerHour = fakePricePerHour(it); // 👈 임의 시간당 요금
+      const open = it.open_now==null ? "" : (it.open_now ? "지금 영업중" : "영업종료");
+
+      const dist = distanceKmToCenter(it);
+
+      return `
+      <div class="bg-white rounded-2xl shadow hover:shadow-md transition p-3 flex flex-col">
+        <img src="${img}" alt="" class="w-full h-36 object-cover rounded-xl border" loading="lazy" />
+        <div class="mt-3 flex-1">
+          <div class="flex items-start justify-between gap-2">
+            <div class="font-medium line-clamp-1">${it.name||""}</div>
+            <div class="text-sm text-gray-700">시간당 ${formatWon(pricePerHour)}</div>
+          </div>
+          <div class="text-sm text-gray-600 mt-1">${it.address||""}</div>
+          <div class="text-xs text-gray-500 mt-1">
+            ★ ${it.rating||"-"} (${it.ratings_total||0}) · ${open}
+            ${isFinite(dist) ? ` · 중심까지 ${dist.toFixed(1)}km` : ``}
+          </div>
+
+        </div>
+        <div class="mt-3 flex gap-2">
+          <a class="flex-1 text-center px-3 py-2 rounded-lg bg-white text-[#0D72C6] border border-[#35AAF2] font-bold
+              hover:bg-[#E9F6FF] focus:outline-none focus:ring-2 focus:ring-[#35AAF2] focus:ring-offset-2 transition"
+            href="/reserve?place_id=${it.place_id}" target="_self">예약하기</a>
+
+          <a class="px-3 py-2 rounded-lg border hover:bg-gray-50"
+            href="https://www.google.com/maps/place/?q=place_id:${it.place_id}" target="_blank" rel="noopener"
+            title="Google 지도에서 보기">지도</a>
+        </div>
+      </div>`;
+    }
+
+
+    async function fetchList(){
+      const r = await fetch(`/api/nearby_studycafes?lat=${lat}&lng=${lng}&radius=${radius}`);
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || "검색 실패");
+      return d.results || [];
+    }
+
+    async function render(){
+      try {
+        const mode = document.getElementById("sortSel").value;
+        const items = sortItems(await fetchList(), mode);
+        document.getElementById("count").textContent = `총 ${items.length}곳`;
+        const wrap = document.getElementById("list");
+        wrap.innerHTML = items.map(cardHTML).join("");
+      } catch (e) {
+        console.error(e);
+        document.getElementById("count").textContent = "검색 실패: " + e.message;
+      }
+    }
+
+    document.getElementById("sortSel").addEventListener("change", render);
+    render();
+  </script>
+</body>
+</html>

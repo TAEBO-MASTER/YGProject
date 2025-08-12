@@ -35,6 +35,29 @@
 
         <!-- 사진 그리드 -->
         <div id="photoGrid" class="mt-5 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2"></div>
+        
+        <!-- 리뷰 -->
+        <div class="mt-6">
+          <div class="flex items-center justify-between">
+            <h3 class="font-semibold">리뷰</h3>
+            <div class="flex items-center gap-2">
+              <label for="reviewSort" class="text-sm text-gray-500">정렬</label>
+              <select id="reviewSort" class="border rounded-md px-2 py-1 text-sm">
+                <option value="recent">최신순</option>
+                <option value="high">평점 높은순</option>
+                <option value="low">평점 낮은순</option>
+              </select>
+            </div>
+          </div>
+
+          <ul id="reviewsList" class="mt-3 space-y-4"></ul>
+
+          <a id="reviewsMore"
+            class="inline-block mt-3 text-sm underline underline-offset-2 text-gray-600"
+            target="_blank" rel="noopener">
+            Google에서 더 보기
+          </a>
+        </div>
 
         <!-- 영업 시간 -->
         <div class="mt-6">
@@ -155,10 +178,83 @@
       });
     }
 
+    // --- 리뷰 렌더 유틸 ---
+    function starText(n){
+      const rating = Math.round((Number(n) || 0) * 2) / 2; // 0.5 단위 반올림
+      const full = Math.floor(rating), half = rating % 1 ? 1 : 0, empty = 5 - full - half;
+      return "★".repeat(full) + (half ? "☆" : "") + "☆".repeat(empty);
+    }
+    function truncate(str, max=200){
+      if (!str) return "";
+      return str.length > max ? str.slice(0, max) + "…" : str;
+    }
+
+    let _reviews = []; // 원본 저장
+
+    function renderReviews(sort="recent"){
+      const list = document.getElementById("reviewsList");
+      list.innerHTML = "";
+      if (!_reviews.length){
+        list.innerHTML = '<li class="text-sm text-gray-500">리뷰가 없습니다.</li>';
+        return;
+      }
+      let items = [..._reviews];
+      if (sort === "high") items.sort((a,b)=>(b.rating||0)-(a.rating||0));
+      if (sort === "low")  items.sort((a,b)=>(a.rating||0)-(b.rating||0));
+      // recent는 원본 순서(보통 최신) 유지
+
+      items.forEach(rv=>{
+        const li = document.createElement("li");
+        li.className = "border rounded-xl p-3 bg-gray-50";
+        const photo = rv.profile_photo_url ? 
+          `<img src="${rv.profile_photo_url}" class="w-8 h-8 rounded-full border object-cover" loading="lazy" />` : 
+          `<div class="w-8 h-8 rounded-full bg-gray-300"></div>`;
+        const author = rv.author_url ? 
+          `<a href="${rv.author_url}" target="_blank" class="hover:underline">${rv.author_name||"사용자"}</a>` : 
+          (rv.author_name||"사용자");
+        const when = rv.relative_time_description ? ` · ${rv.relative_time_description}` : "";
+        const text = rv.text || "";
+
+        li.innerHTML = `
+          <div class="flex items-start gap-3">
+            ${photo}
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between">
+                <div class="text-sm">
+                  <span class="font-medium">${author}</span>
+                  <span class="ml-2 text-amber-600">${starText(rv.rating)}</span>
+                  <span class="ml-1 text-xs text-gray-500">(${rv.rating || "-"})${when}</span>
+                </div>
+              </div>
+              <p class="mt-2 text-sm text-gray-800 review-text">${truncate(text, 220)}</p>
+              ${text.length > 220 ? `<button class="mt-1 text-xs text-gray-600 underline more-less">더보기</button>` : ``}
+            </div>
+          </div>
+        `;
+
+        const btn = li.querySelector(".more-less");
+        if (btn){
+          let expanded = false;
+          btn.addEventListener("click", ()=>{
+            expanded = !expanded;
+            li.querySelector(".review-text").textContent = expanded ? text : truncate(text, 220);
+            btn.textContent = expanded ? "접기" : "더보기";
+          });
+        }
+        list.appendChild(li);
+      });
+    }
+
+
+
     async function loadPlace() {
       try {
         const r = await fetch(`/api/place_details?place_id=${encodeURIComponent(placeId)}`);
         const d = await r.json();
+        _reviews = d.reviews || [];
+          renderReviews("recent");
+          document.getElementById("reviewsMore").href =
+            `https://www.google.com/maps/place/?q=place_id:${placeId}`;
         if (!r.ok) throw new Error(d.error || "상세 조회 실패");
 
         document.getElementById("storeName").textContent = d.name || "가게";
@@ -219,6 +315,11 @@
         btn.disabled = false;
       }
     });
+
+    document.getElementById("reviewSort").addEventListener("change", (e)=>{
+      renderReviews(e.target.value);
+    });
+
   </script>
 </body>
 </html>

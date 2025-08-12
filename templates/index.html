@@ -47,7 +47,7 @@
             margin-top: 0.5rem; /* Adjust as needed */
             margin-bottom: 0.25rem;
         }
-        .title-shadow { text-shadow: 0 1px 0 rgba(64,54,53,.25); }
+
         /* Custom Alert/Message Box Styles */
         #customAlert {
             position: fixed;
@@ -74,6 +74,58 @@
             100% { opacity: 0; }
         }
 
+        /* === 브랜드 & 공통 버튼 모션 === */
+        :root {
+        --brand: #35AAF2;
+        --brand-hov: #2C9CDA;
+        --brand-bg: #E9F6FF;
+        }
+
+        /* 버튼 팝(튀는) 모션 — 모든 버튼 공통 */
+        button, .btn-pop {
+        transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease, color .18s ease;
+        }
+        button:hover, .btn-pop:hover { transform: translateY(-1px) scale(1.02); box-shadow: 0 8px 20px rgba(53,170,242,.15); }
+        button:active, .btn-pop:active { transform: translateY(0) scale(0.98); }
+
+        /* 아웃라인 파랑 버튼용 ‘활성’ 표시(선택됨) */
+        .btn-outline-active {
+        background: var(--brand-bg) !important;
+        box-shadow: inset 0 0 0 2px var(--brand);
+        }
+
+        /* === range(λ) 슬라이더 스타일: 트랙+썸 === */
+        #lambdaSlider {
+        -webkit-appearance: none; appearance: none; width: 100%; height: 8px;
+        background: var(--brand-bg); border-radius: 9999px; outline: none;
+        }
+        #lambdaSlider::-webkit-slider-runnable-track {
+        height: 8px; background: var(--brand-bg); border-radius: 9999px;
+        }
+        #lambdaSlider::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none;
+        width: 20px; height: 20px; border-radius: 50%;
+        background: var(--brand);
+        border: 2px solid var(--brand-hov);
+        margin-top: -6px; /* 트랙 가운데 정렬 */
+        transition: transform .15s ease, box-shadow .15s ease;
+        box-shadow: 0 2px 6px rgba(53,170,242,.35);
+        }
+        #lambdaSlider:hover::-webkit-slider-thumb { transform: scale(1.06); }
+        #lambdaSlider:active::-webkit-slider-thumb { transform: scale(0.95); }
+
+        #lambdaSlider::-moz-range-track {
+        height: 8px; background: var(--brand-bg); border-radius: 9999px;
+        }
+        #lambdaSlider::-moz-range-thumb {
+        width: 20px; height: 20px; border-radius: 50%;
+        background: var(--brand); border: 2px solid var(--brand-hov);
+        transition: transform .15s ease, box-shadow .15s ease;
+        box-shadow: 0 2px 6px rgba(53,170,242,.35);
+        }
+        #lambdaSlider:hover::-moz-range-thumb { transform: scale(1.06); }
+        #lambdaSlider:active::-moz-range-thumb { transform: scale(0.95); }
+
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
@@ -94,18 +146,17 @@
         </button>
         </div>
 
-
-        <!-- 제목 영역: #77CFF2 배경 / 단어별 색상 분리 -->
-        <div class="mb-6 rounded-lg overflow-hidden">
+<div class="mb-6 rounded-lg overflow-hidden">
         <div class="py-6 text-center flex items-center justify-center gap-3">
             <img src="/static/apple-touch-icon.png" alt="Where To Meet 로고" class="h-12 w-auto">
             <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight title-shadow">
-            <span style="color:#403635;">   Where </span>
+            <span style="color:#403635;">Where </span>
             <span style="color:#35AAF2;">To </span>
             <span style="color:#77CFF2;">Meet</span>
             </h1>
         </div>
         </div>
+
 
         <form id="locationForm" class="space-y-4">
             <div>
@@ -124,18 +175,25 @@
                 class="min-w-0 flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 inputmode="search" enterkeyhint="search" />
                 <button type="button" id="addFromSearchBtn"
-                class="w-full sm:w-auto shrink-0 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold px-4 py-2 rounded-lg">
-                검색으로 추가
-                </button>
+  class="w-full sm:w-auto shrink-0 bg-white text-[#0D72C6] border border-[#35AAF2] rounded-lg px-4 py-2 font-bold
+         hover:bg-[#E9F6FF] focus:outline-none focus:ring-2 focus:ring-[#35AAF2] focus:ring-offset-2 transition">
+  검색으로 추가
+</button>
+
+
             </div>
             </div>
 
 
 
             <button type="button" id="useCurrentLocationBtn"
-                    class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105 mb-2">
-                📍 현위치로 입력
-            </button>
+  class="w-full bg-white text-[#0D72C6] border border-[#35AAF2] rounded-lg px-4 py-2 font-bold mb-2
+         hover:bg-[#E9F6FF] focus:outline-none focus:ring-2 focus:ring-[#35AAF2] focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105">
+  📍 현위치로 입력
+</button>
+
+
+
             <div id="currentLocationLoading" class="hidden text-center text-indigo-600 font-semibold mb-2">
                 <!-- 스피너 SVG와 텍스트를 <span>으로 감싸서 JS가 찾을 수 있도록 함 -->
                 <div class="flex items-center justify-center space-x-2">
@@ -148,9 +206,11 @@
             </div>
 
             <button type="button" id="resetBtn"
-                    class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105 mb-4">
+                class="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105 mb-4">
                 지도 초기화
             </button>
+
+
 
             <!-- 람다(가중치) 슬라이더 -->
             <div class="mb-4">
@@ -158,10 +218,19 @@
                     <span class="block text-center mb-1">
                         최적화 기준 선택
                     </span>
-                    <div class="slider-label-container">
-                        <span class="font-bold text-blue-700 text-lg">평등</span>
-                        <span class="font-bold text-green-700 text-lg">효율</span>
-                    </div>
+                    
+            <div class="slider-label-container">
+            <button type="button" id="btnFair"
+                    class="px-3 py-1 rounded-lg bg-white text-[#0D72C6] border border-[#35AAF2] font-bold btn-pop">
+                평등
+            </button>
+            <button type="button" id="btnEff"
+                    class="px-3 py-1 rounded-lg bg-white text-[#0D72C6] border border-[#35AAF2] font-bold btn-pop">
+                효율
+            </button>
+            </div>
+
+
                     <input type="range" id="lambdaSlider" name="lambda" min="0" max="1" step="0.1" value="0.5"
                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer range-lg">
                     <span class="block text-center text-lg font-medium text-gray-800 mt-1">
@@ -180,10 +249,13 @@
             </div>
 
 <button type="submit" id="submitBtn"
-  class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-lg
-         focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 transition">
+  class="w-full bg-white text-[#0D72C6] border border-[#35AAF2] rounded-lg px-4 py-3 font-bold
+         focus:outline-none focus:ring-2 focus:ring-[#35AAF2] focus:ring-offset-2 hover:bg-[#E9F6FF] transition">
   최적 장소 찾기
 </button>
+
+
+
 
 
         </form>
@@ -205,11 +277,13 @@
             
 
         <div id="actionBar" class="mt-4">
-  <button id="btnShowRoutes"
-          class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-          disabled>
-    사람별 경로 상세 보기
-  </button>
+<button id="btnShowRoutes" disabled
+  class="w-full px-4 py-2 bg-white text-[#0D72C6] border border-[#35AAF2] rounded-lg font-bold
+         hover:bg-[#E9F6FF] focus:outline-none focus:ring-2 focus:ring-[#35AAF2] disabled:opacity-50 transition">
+  개인 경로 상세 보기
+</button>
+
+
 </div>
 
 <div id="routesPanel" class="mt-4 hidden"></div>
@@ -333,6 +407,36 @@ function restoreState() {
             document.getElementById("lambdaSlider").addEventListener("input", saveState);
 
             const lambdaSlider = document.getElementById("lambdaSlider");
+            // 평등/효율 버튼 ↔ 슬라이더 연동
+            const btnFair = document.getElementById("btnFair");
+            const btnEff  = document.getElementById("btnEff");
+
+            function updateLambdaButtonsUI() {
+            const v = parseFloat(lambdaSlider.value);
+            // 0쪽/1쪽에 가까우면 활성 표시
+            const fairOn = v <= 0.2, effOn = v >= 0.8;
+            btnFair.classList.toggle("btn-outline-active", fairOn);
+            btnEff.classList.toggle("btn-outline-active", effOn);
+            }
+
+            btnFair.addEventListener("click", () => {
+            lambdaSlider.value = 0;
+            lambdaValueSpan.textContent = "0.0";
+            updateLambdaButtonsUI();
+            if (typeof saveState === "function") saveState();
+            });
+            btnEff.addEventListener("click", () => {
+            lambdaSlider.value = 1;
+            lambdaValueSpan.textContent = "1.0";
+            updateLambdaButtonsUI();
+            if (typeof saveState === "function") saveState();
+            });
+
+            // 슬라이더를 드래그해도 버튼 상태 동기화
+            lambdaSlider.addEventListener("input", updateLambdaButtonsUI);
+            updateLambdaButtonsUI();
+
+
             const lambdaValueSpan = document.getElementById("lambdaValue");
             lambdaSlider.addEventListener("input", () => {
                 lambdaValueSpan.textContent = parseFloat(lambdaSlider.value).toFixed(1);
@@ -840,9 +944,7 @@ function restoreState() {
                     <div class="info-window-content">
                         <h3>📚 스터디카페: ${studyCafe.name}</h3>
                         <p>거리: ${studyCafe.distance_km.toFixed(2)} km</p>
-                        <a class="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
-                            ="/reserve?place_id=${studyCafe.place_id || cafe.place_id}"
-                            target="_self">예약하기</a>
+                    
 
                     </div>
                 `;
@@ -861,7 +963,20 @@ function restoreState() {
             map.fitBounds(bounds);
         }
 
-        function displayResultsText(data) {
+        // ✅ 최적 장소 기준, 백엔드 API로 주변 스터디카페(거리순) 가져오기 → 상위 5개만
+        async function loadStudyCafesTop5(centerLatLng) {
+        const lat = typeof centerLatLng.lat === 'function' ? centerLatLng.lat() : centerLatLng.lat;
+        const lng = typeof centerLatLng.lng === 'function' ? centerLatLng.lng() : centerLatLng.lng;
+        const radius = 1500; // "주변" 정의(1.5km). 필요하면 1000~2000m로 조절
+        const r = await fetch(`/api/nearby_studycafes?lat=${lat}&lng=${lng}&radius=${radius}`);
+        const d = await r.json();
+        if (!r.ok || !d?.ok) throw new Error(d.error || "스터디카페 검색 실패");
+        return (d.results || []).slice(0, 5);
+        }
+
+        
+
+        async function displayResultsText(data) {
             const resultsDisplay = document.getElementById("resultsDisplay");
             let htmlContent = '';
 
@@ -911,30 +1026,34 @@ function restoreState() {
                     `;
                 }
 
-                // Display Study Cafes
-                if (data.study_cafes_list && data.study_cafes_list.length > 0) {
-                    htmlContent += `
-                        <div class="mb-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                            <h2 class="text-2xl font-semibold text-yellow-800 mb-3">📚 주변 스터디카페 (상위 5개)</h2>
-                            <ul class="list-disc pl-5 space-y-2 text-gray-700">
-                    `;
-                    data.study_cafes_list.forEach(studyCafe => {
-                        htmlContent += `
-                                <li>
-                                    <strong>${studyCafe.name}</strong> (거리: ${studyCafe.distance_km.toFixed(2)} km)
-                                    <span class="text-sm text-gray-500">(${studyCafe.lat.toFixed(6)}, ${studyCafe.lng.toFixed(6)})</span>
-                                    <a class="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
-                                        href="/reserve?place_id=${studyCafe.place_id || cafe.place_id}"
-                                        target="_self">예약하기</a>
+                // 📚 주변 스터디카페 (상위 5개) — 백엔드 API 결과 사용(거리순+이름필터 일관)
+                htmlContent += `
+                <div class="mb-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                    <h2 class="text-2xl font-semibold text-yellow-800 mb-3">📚 주변 스터디카페 (상위 5개)</h2>
+                    <ul class="list-disc pl-5 space-y-2 text-gray-700">`;
 
-                                </li>
-                        `;
-                    });
+                try {
+                const cafes = await loadStudyCafesTop5({ lat: data.best_station.lat, lng: data.best_station.lng });
+                if (!cafes.length) {
+                    htmlContent += `<li class="text-gray-500">주변에 스터디카페가 없습니다.</li>`;
+                } else {
+                    cafes.forEach(sc => {
+                    const dkm = (typeof sc.distance_km === 'number') ? sc.distance_km.toFixed(2) : '-';
+                    const la = sc.location?.lat ?? sc.lat;
+                    const ln = sc.location?.lng ?? sc.lng;
                     htmlContent += `
-                            </ul>
-                        </div>
-                    `;
+                        <li>
+                        <strong>${sc.name}</strong> (거리: ${dkm} km)
+                        <span class="text-sm text-gray-500">(${la?.toFixed?.(6) ?? ''}, ${ln?.toFixed?.(6) ?? ''})</span>
+                        </li>`;
+                    });
                 }
+                } catch (e) {
+                htmlContent += `<li class="text-red-600">스터디카페 불러오기 실패: ${e.message}</li>`;
+                }
+
+                htmlContent += `</ul></div>`;
+
 
                 if (!(data.cafes_list && data.cafes_list.length > 0) && !(data.study_cafes_list && data.study_cafes_list.length > 0)) {
                     htmlContent += `
@@ -954,6 +1073,8 @@ function restoreState() {
                         <p class="text-lg text-gray-700 mb-2"><strong>중심 지점으로부터 거리:</strong> ${data.best_bus_terminal.distance_km.toFixed(2)} km</p>
                     </div>
                 `;
+
+                
                 // Display Cafes for bus terminal
                 if (data.cafes_list && data.cafes_list.length > 0) {
                     htmlContent += `
@@ -974,30 +1095,35 @@ function restoreState() {
                         </div>
                     `;
                 }
-                // Display Study Cafes for bus terminal
-                if (data.study_cafes_list && data.study_cafes_list.length > 0) {
+                
+                // 📚 주변 스터디카페 (상위 5개) — 백엔드 API 결과 사용(거리순+이름필터 일관)
                     htmlContent += `
-                        <div class="mb-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                            <h2 class="text-2xl font-semibold text-yellow-800 mb-3">📚 주변 스터디카페 (상위 5개)</h2>
-                            <ul class="list-disc pl-5 space-y-2 text-gray-700">
-                    `;
-                    data.study_cafes_list.forEach(studyCafe => {
-                        htmlContent += `
-                                <li>
-                                    <strong>${studyCafe.name}</strong> (거리: ${studyCafe.distance_km.toFixed(2)} km)
-                                    <span class="text-sm text-gray-500">(${studyCafe.lat.toFixed(6)}, ${studyCafe.lng.toFixed(6)})</span>
-                                    <a class="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
-                                        href="/reserve?place_id=${studyCafe.place_id || cafe.place_id}"
-                                        target="_self">예약하기</a>
+                    <div class="mb-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                        <h2 class="text-2xl font-semibold text-yellow-800 mb-3">📚 주변 스터디카페 (상위 5개)</h2>
+                        <ul class="list-disc pl-5 space-y-2 text-gray-700">`;
 
-                                </li>
-                        `;
-                    });
-                    htmlContent += `
-                            </ul>
-                        </div>
-                    `;
-                }
+                    try {
+                    const cafes = await loadStudyCafesTop5({ lat: data.best_station.lat, lng: data.best_station.lng });
+                    if (!cafes.length) {
+                        htmlContent += `<li class="text-gray-500">주변에 스터디카페가 없습니다.</li>`;
+                    } else {
+                        cafes.forEach(sc => {
+                        const dkm = (typeof sc.distance_km === 'number') ? sc.distance_km.toFixed(2) : '-';
+                        const la = sc.location?.lat ?? sc.lat;
+                        const ln = sc.location?.lng ?? sc.lng;
+                        htmlContent += `
+                            <li>
+                            <strong>${sc.name}</strong> (거리: ${dkm} km)
+                            <span class="text-sm text-gray-500">(${la?.toFixed?.(6) ?? ''}, ${ln?.toFixed?.(6) ?? ''})</span>
+                            </li>`;
+                        });
+                    }
+                    } catch (e) {
+                    htmlContent += `<li class="text-red-600">스터디카페 불러오기 실패: ${e.message}</li>`;
+                    }
+
+                    htmlContent += `</ul></div>`;
+
 
                 if (!(data.cafes_list && data.cafes_list.length > 0) && !(data.study_cafes_list && data.study_cafes_list.length > 0)) {
                     htmlContent += `
@@ -1032,28 +1158,36 @@ function restoreState() {
                         </ul>
                     `;
                 }
-                // Display Direct Study Cafes
-                if (data.direct_nearby_places_study_cafes && data.direct_nearby_places_study_cafes.length > 0) {
-                    htmlContent += `
-                        <h3 class="text-xl font-semibold text-yellow-700 mt-4 mb-2">📚 주변 스터디카페 (상위 5개)</h3>
-                        <ul class="list-disc pl-5 space-y-2 text-gray-700">
-                    `;
-                    data.direct_nearby_places_study_cafes.forEach(studyCafe => {
-                        htmlContent += `
-                                <li>
-                                    <strong>${studyCafe.name}</strong> (거리: ${studyCafe.distance_km.toFixed(2)} km)
-                                    <span class="text-sm text-gray-500">(${studyCafe.lat.toFixed(6)}, ${studyCafe.lng.toFixed(6)})</span>
-                                    <a class="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
-                                        href="/reserve?place_id=${studyCafe.place_id || cafe.place_id}"
-                                        target="_self">예약하기</a>
+                
+                // 📚 주변 스터디카페 (상위 5개) — 백엔드 API 결과 사용
+                htmlContent += `
+                <h3 class="text-xl font-semibold text-yellow-700 mt-4 mb-2">📚 주변 스터디카페 (상위 5개)</h3>
+                <ul class="list-disc pl-5 space-y-2 text-gray-700">`;
 
-                                </li>
-                        `;
-                    });
+                try {
+                const cafes = await loadStudyCafesTop5({ lat: data.best_point.lat, lng: data.best_point.lng });
+                if (!cafes.length) {
+                    htmlContent += `<li class="text-gray-500">주변에 스터디카페가 없습니다.</li>`;
+                } else {
+                    cafes.forEach(sc => {
+                    const dkm = (typeof sc.distance_km === 'number') ? sc.distance_km.toFixed(2) : '-';
+                    const la = sc.location?.lat ?? sc.lat;
+                    const ln = sc.location?.lng ?? sc.lng;
                     htmlContent += `
-                        </ul>
-                    `;
+                        <li>
+                        <strong>${sc.name}</strong> (거리: ${dkm} km)
+                        <span class="text-sm text-gray-500">(${la?.toFixed?.(6) ?? ''}, ${ln?.toFixed?.(6) ?? ''})</span>
+                        </li>`;
+                    });
                 }
+                } catch (e) {
+                htmlContent += `<li class="text-red-600">스터디카페 불러오기 실패: ${e.message}</li>`;
+                }
+
+                htmlContent += `</ul>`;
+
+
+
                 htmlContent += `</div>`; // Close the main div for direct_places
 
             } else if (data.result_type === "no_places_found") {
@@ -1071,6 +1205,21 @@ function restoreState() {
             }
             resultsDisplay.innerHTML = htmlContent;
             resultsDisplay.classList.remove("hidden");
+
+            // ✅ 결과 타입별로 최적 장소 좌표를 뽑아 버튼 주입
+let centerForCafes = null;
+if (data.result_type === "transit_station" && data.best_station) {
+  centerForCafes = { lat: data.best_station.lat, lng: data.best_station.lng };
+} else if (data.result_type === "bus_terminal" && data.best_bus_terminal) {
+  centerForCafes = { lat: data.best_bus_terminal.lat, lng: data.best_bus_terminal.lng };
+} else if (data.result_type === "direct_places" && data.best_point) {
+  centerForCafes = { lat: data.best_point.lat, lng: data.best_point.lng };
+}
+
+if (centerForCafes) {
+  injectStudyCafeReserveButton(centerForCafes);
+}
+
         }
         function closeAdBanner() {
             const el = document.getElementById('adBanner');
@@ -1231,7 +1380,8 @@ async function showRoutesForAll() {
           ${steps.map(stepToHTML).join("")}
         </ol>
         <div class="mt-3 text-right">
-          <button class="detail-btn px-3 py-1.5 rounded-md bg-gray-900 text-white"
+            <button class="detail-btn px-3 py-1.5 rounded-md bg-black hover:bg-black/90 text-white
+               focus:outline-none focus:ring-2 focus:ring-black"
             data-origin-lat="${orig.lat}"
             data-origin-lng="${orig.lng}"
             data-dest-lat="${selectedDestination.lat}"
@@ -1266,6 +1416,49 @@ async function showRoutesForAll() {
     e.preventDefault();
     showRoutesForAll();
   });
+// 스터디카페 목록 페이지로 이동
+function gotoStudyCafeList() {
+  try {
+    const c = map?.getCenter?.();
+    const lat = c ? c.lat() : (window.lastCenter?.lat || 37.5665);
+    const lng = c ? c.lng() : (window.lastCenter?.lng || 126.9780);
+    const radius = 3000; // 필요시 조절
+    location.href = `/studycafes?lat=${lat}&lng=${lng}&radius=${radius}`;
+  } catch (e) {
+    location.href = `/studycafes`; // 폴백
+  }
+}
+document.getElementById("btnStudyCafeList")?.addEventListener("click", gotoStudyCafeList);
+
+
+// ✅ 최적 장소(centerLatLng) 기준으로, actionBar 안에서 "사람별 경로 상세 보기" 버튼 위에
+//    "스터디카페 예약하기" 버튼을 주입하는 유틸
+function injectStudyCafeReserveButton(centerLatLng) {
+  // 중복 생성 방지
+  document.getElementById('btnStudyCafeListInline')?.remove();
+
+  const bar = document.getElementById('actionBar');
+  const personBtn = document.getElementById('btnShowRoutes');
+  if (!bar || !personBtn) return;
+
+  const btn = document.createElement('button');
+  btn.id = 'btnStudyCafeListInline';
+  btn.type = 'button';
+  btn.className = 'w-full mb-2 px-3 py-2 rounded-lg bg-white text-[#0D72C6] border border-[#35AAF2] font-bold hover:bg-[#E9F6FF]';
+  btn.textContent = '스터디카페 예약';
+
+  // 클릭 → 주변(1.5km) 스터디카페 전용 페이지로
+  const lat = typeof centerLatLng.lat === 'function' ? centerLatLng.lat() : centerLatLng.lat;
+  const lng = typeof centerLatLng.lng === 'function' ? centerLatLng.lng() : centerLatLng.lng;
+  btn.addEventListener('click', () => {
+    const radius = 1500; // "주변"만 보이도록 1.5km
+    location.href = `/studycafes?lat=${lat}&lng=${lng}&radius=${radius}`;
+  });
+
+  // ✔ actionBar 안에서 "사람별 경로 상세 보기" 버튼 바로 위에 삽입
+  bar.insertBefore(btn, personBtn);
+}
+
 </script>
 
     <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCGgZQhmNH8ooriI05CeOi60AvlOcYTHPQ&libraries=places&callback=initMap"></script>

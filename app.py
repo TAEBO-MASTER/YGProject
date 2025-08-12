@@ -502,7 +502,7 @@ def api_place_details():
     fields = ",".join([
         "name","formatted_address","international_phone_number",
         "website","rating","user_ratings_total","price_level",
-        "opening_hours","photos","geometry","types"
+        "opening_hours","photos","geometry","types","reviews"
     ])
     url = (
         "https://maps.googleapis.com/maps/api/place/details/json"
@@ -523,6 +523,20 @@ def api_place_details():
             "height": p.get("height")
         })
 
+    reviews = []
+    for rv in result.get("reviews", [])[:10]:
+        reviews.append({
+            "author_name": rv.get("author_name"),
+            "rating": rv.get("rating"),
+            "text": rv.get("text"),
+            "time": rv.get("time"),
+            "relative_time_description": rv.get("relative_time_description"),
+            "profile_photo_url": rv.get("profile_photo_url"),
+            "author_url": rv.get("author_url"),
+            "language": rv.get("language")
+    })
+
+
     return jsonify({
         "name": result.get("name"),
         "address": result.get("formatted_address"),
@@ -534,7 +548,8 @@ def api_place_details():
         "opening_hours": result.get("opening_hours", {}),
         "location": result.get("geometry", {}).get("location"),
         "types": result.get("types", []),
-        "photos": photos
+        "photos": photos,
+        "reviews": reviews
     })
 
 @app.route('/api/place_photo')
@@ -581,6 +596,97 @@ def api_reservations():
     db.append(payload)
     db_file.write_text(json.dumps(db, ensure_ascii=False, indent=2), encoding="utf-8")
     return jsonify({"ok": True, "reservation_id": rid})
+
+# ---------- [스터디카페 가격 리스트 페이지] ----------
+@app.route('/studycafes')
+def studycafes_page():
+    # templates/studycafes.html 렌더
+    return render_template('studycafes.html')
+
+
+@app.route('/api/nearby_studycafes')
+def api_nearby_studycafes():
+    """
+    최적 장소(lat,lng) 주변의 '스터디카페' 성격 장소를 거리순으로 반환
+    - Google Places Nearby Search: rankby=distance
+    - 이름 필터: '스터디', '스터디 카페', '독서실', '스터디룸', '스터디라운지' 등 포함만 남김
+    - (radius는 rankby=distance와 함께 못 씀 → 검색 후 하버사인으로 수동 필터)
+    """
+    lat = request.args.get('lat', type=float)
+    lng = request.args.get('lng', type=float)
+    max_km = (request.args.get('radius', default='1500'))  # m 단위 들어오므로
+    try:
+      max_km = float(max_km) / 1000.0
+    except Exception:
+      max_km = 2.0  # 기본 2km
+
+    if lat is None or lng is None:
+        return jsonify({"error": "lat,lng required"}), 400
+
+    # rankby=distance는 radius를 쓸 수 없음. 대신 keyword/name/type 중 하나 필수.
+    # 일반 카페가 섞이지 않도록 keyword는 '스터디' 축으로, post-filter로 한 번 더 거름.
+    url = (
+        "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+        f"?location={lat},{lng}"
+        f"&rankby=distance"
+        f"&language=ko"
+        f"&keyword={requests.utils.quote('스터디 카페|독서실|스터디룸|스터디라운지|study cafe')}"
+        f"&key={SERVER_KEY}"
+    )
+
+    r = requests.get(url, timeout=8)
+    data = r.json()
+    if data.get("status") not in ("OK", "ZERO_RESULTS"):
+        return jsonify({"error": data.get("status"), "detail": data}), 502
+
+    def haversine_km(a_lat, a_lng, b_lat, b_lng):
+        from math import radians, sin, cos, atan2, sqrt
+        R = 6371.0
+        dlat = radians(b_lat - a_lat); dlon = radians(b_lng - a_lng)
+        aa = sin(dlat/2)**2 + cos(radians(a_lat)) * cos(radians(b_lat)) * sin(dlon/2)**2
+        return R * (2 * atan2(sqrt(aa), sqrt(1-aa)))
+
+    # 이름 필터 (그냥 '카페' 제거 목적)
+    import re
+    name_ok = re.compile(r"(스터디\s*카페|스터디|독서실|스터디룸|스터디라운지)", re.I)
+
+    items = []
+    for it in data.get("results", []):
+        name = it.get("name", "")
+        loc = it.get("geometry", {}).get("location", {})
+        ilat, ilng = loc.get("lat"), loc.get("lng")
+        if ilat is None or ilng is None:
+            continue
+
+        # 거리 제한 (주변만)
+        dist = haversine_km(lat, lng, ilat, ilng)
+        if dist > max_km:
+            continue
+
+        # 이름 필터 통과 못하면 제외
+        if not name_ok.search(name):
+            continue
+
+        photos = it.get("photos", [])
+        photo_ref = photos[0].get("photo_reference") if photos else None
+
+        items.append({
+            "place_id": it.get("place_id"),
+            "name": name,
+            "rating": it.get("rating"),
+            "ratings_total": it.get("user_ratings_total"),
+            "price_level": it.get("price_level"),
+            "open_now": it.get("opening_hours", {}).get("open_now"),
+            "address": it.get("vicinity"),
+            "photo_ref": photo_ref,
+            "location": {"lat": ilat, "lng": ilng},
+            "distance_km": round(dist, 3),  # 참고용
+        })
+
+    # 이미 rankby=distance로 받았지만, 방금 radius 필터링을 했으니 다시 거리순 정렬 보장
+    items.sort(key=lambda x: x["distance_km"])
+
+    return jsonify({"ok": True, "results": items})
 
 
 
