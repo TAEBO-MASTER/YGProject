@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>경로 상세 보기 | Where2Meet</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', sans-serif; background:#f8fafc; }
+    #map { height: 100%; width: 100%; }
+    /* 시간바 */
+    .timebar { display:flex; height: 14px; border:1px solid #e5e7eb; border-radius:9999px; overflow:hidden; background:#f3f4f6; }
+    .timebar-seg { height:100%; position:relative; }
+    .timebar-seg:hover::after { content: attr(data-label); position:absolute; top:-30px; left:50%; transform:translateX(-50%); font-size:11px; background:#111827; color:#fff; padding:2px 6px; border-radius:6px; white-space:nowrap; }
+    /* 스텝 하이라이트 */
+    .step-btn { width:100%; text-align:left; padding:8px 10px; border-radius:10px; }
+    .step-btn:hover { background:#f3f4f6; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <!-- Top bar -->
+  <header class="sticky top-0 z-10 bg-white/90 backdrop-blur border-b">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+      <a href="/" class="text-gray-600 hover:text-gray-900">← 돌아가기</a>
+      <h1 class="text-lg sm:text-xl font-semibold text-gray-900">사람별 경로 상세</h1>
+      <div class="ml-auto flex items-center gap-3">
+        <label class="inline-flex items-center gap-1 text-sm text-gray-700">
+          <input id="toggleMarkers" type="checkbox" class="accent-indigo-600" checked /> 환승/정차 마커 표시
+        </label>
+        <select id="pref" class="border rounded px-2 py-1 text-sm">
+          <option value="FEWER_TRANSFERS">환승 적게</option>
+          <option value="LESS_WALKING">도보 적게</option>
+        </select>
+        <a id="openGmaps" target="_blank" class="text-sm text-indigo-600 hover:underline">Google 지도에서 열기</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Layout -->
+  <main class="max-w-6xl mx-auto px-4 py-4 grid grid-cols-1 lg:grid-cols-[440px,1fr] gap-4">
+    <!-- Left: timeline -->
+    <section class="bg-white border rounded-2xl shadow-sm p-4 h-max">
+      <div class="mb-3">
+        <div class="text-sm text-gray-500" id="startEnd"></div>
+        <div class="mt-1 text-2xl font-bold text-gray-900" id="summaryDuration">총 0분</div>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <span id="sumWalking" class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100">도보 0분</span>
+          <span id="sumTransfers" class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">환승 0회</span>
+        </div>
+      </div>
+
+      <!-- 시간 분포 바 -->
+      <div class="mt-3">
+        <div class="flex items-center justify-between mb-1">
+          <div class="text-sm font-semibold text-gray-800">시간 분포</div>
+          <div class="flex items-center gap-3 text-xs text-gray-600">
+            <span class="inline-flex items-center gap-1"><span class="w-3 h-3 inline-block rounded bg-gray-400"></span>도보</span>
+            <span class="inline-flex items-center gap-1"><span class="w-3 h-3 inline-block rounded bg-indigo-500"></span>대중교통</span>
+          </div>
+        </div>
+        <div id="timebar" class="timebar"></div>
+      </div>
+
+      <!-- 단계 목록 -->
+      <ol id="steps" class="mt-4 space-y-2 text-gray-900"></ol>
+      <div id="fatalBox" class="hidden mt-4 p-3 rounded-lg border bg-red-50 text-red-700 text-sm"></div>
+    </section>
+
+    <!-- Right: map -->
+    <section class="bg-white border rounded-2xl shadow-sm overflow-hidden min-h-[60vh] lg:min-h-[72vh]">
+      <div id="map"></div>
+      <!-- 범례 -->
+      <div class="absolute bottom-3 right-3 bg-white/95 border rounded-xl shadow px-3 py-2 text-xs text-gray-700 flex flex-col gap-1">
+        <div class="flex items-center gap-2"><span class="w-4 h-1.5 inline-block rounded bg-gray-400"></span>도보(점선)</div>
+        <div class="flex items-center gap-2"><span class="w-4 h-1.5 inline-block rounded bg-indigo-500"></span>대중교통</div>
+        <div class="flex items-center gap-2"><img alt="" class="w-3 h-3" src="https://maps.google.com/mapfiles/ms/icons/blue-dot.png"/> 승차</div>
+        <div class="flex items-center gap-2"><img alt="" class="w-3 h-3" src="https://maps.google.com/mapfiles/ms/icons/yellow-dot.png"/> 환승</div>
+        <div class="flex items-center gap-2"><img alt="" class="w-3 h-3" src="https://maps.google.com/mapfiles/ms/icons/green-dot.png"/> 하차</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // 인증 실패 메시지
+    window.gm_authFailure = function () {
+      const box = document.getElementById('fatalBox');
+      box.classList.remove('hidden');
+      box.innerHTML = '<div class="font-semibold mb-1">Google Maps 인증 실패</div><div class="text-red-800">API 키 또는 권한을 확인하세요.</div>';
+    };
+
+    function getParams() {
+      const sp = new URLSearchParams(location.search);
+      const [olat, olng] = (sp.get('origin')||'').split(',').map(Number);
+      const [dlat, dlng] = (sp.get('dest')||'').split(',').map(Number);
+      return { origin:{lat:olat,lng:olng}, dest:{lat:dlat,lng:dlng}, pref: sp.get('pref')||'FEWER_TRANSFERS', depart: new Date(parseInt(sp.get('depart')||Date.now(),10)) };
+    }
+    function vehicleEmoji(type){ switch(type){ case 'SUBWAY': return '🚇'; case 'HEAVY_RAIL': case 'COMMUTER_TRAIN': case 'RAIL': return '🚉'; case 'BUS': return '🚌'; case 'TRAM': return '🚊'; default: return '🚆'; } }
+    function cleanAddress(str=''){ return String(str).replace(/^대한민국\s*/, '').replace(/\(\d{5}\)\s*/g,'').trim(); }
+    function fmtTime(ts){ try{ return new Date(ts).toTimeString().slice(0,5);}catch(e){return'';} }
+
+    // 지도 리소스들
+    let map, directionsService, directionsRenderer;
+    let segmentPolylines = []; // 스텝별 폴리라인
+    let stepMarkers = [];      // 환승/승하차 마커
+
+    function clearOverlays(){
+      segmentPolylines.forEach(p=>p.setMap(null)); segmentPolylines=[];
+      stepMarkers.forEach(m=>m.setMap(null)); stepMarkers=[];
+    }
+
+    function addMarker(pos, iconUrl, title){
+      const m = new google.maps.Marker({ position: pos, map, icon:{ url: iconUrl }, title });
+      stepMarkers.push(m); return m;
+    }
+
+    function makeDashedPolyline(path){
+      const lineSymbol = { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 2 };
+      const pl = new google.maps.Polyline({ path, strokeOpacity:0, icons:[{ icon: lineSymbol, offset:'0', repeat:'10px' }], strokeColor:'#9CA3AF', map });
+      segmentPolylines.push(pl); return pl;
+    }
+
+    function makeSolidPolyline(path, color){
+      const pl = new google.maps.Polyline({ path, strokeColor: color||'#4f46e5', strokeOpacity:0.9, strokeWeight:6, map });
+      segmentPolylines.push(pl); return pl;
+    }
+
+    function stepToHTML(step, idx, color) {
+  if (step.travel_mode === 'WALKING') {
+    const d = step.distance?.text ?? '';
+    const t = step.duration?.text ?? '';
+    return `<li><button class="step-btn" data-step="${idx}">
+      🚶 도보 · <span class="text-gray-700">${d}</span> · 약 <span class="text-gray-700">${t}</span>
+    </button></li>`;
+  }
+
+  if (step.travel_mode === 'TRANSIT') {
+    const td   = step.transit || step.transit_details;
+    if (!td) return `<li><button class="step-btn" data-step="${idx}">대중교통 구간</button></li>`;
+
+    const lineName = td.line?.short_name || td.line?.name || '노선';
+    const vType    = td.line?.vehicle?.type || '';
+    const from     = cleanAddress(td.departure_stop?.name || '');
+    const to       = cleanAddress(td.arrival_stop?.name   || '');
+    const depT     = td.departure_time?.text || fmtTime(td.departure_time?.value);
+    const arrT     = td.arrival_time?.text   || fmtTime(td.arrival_time?.value);
+    const stops    = (td.num_stops != null) ? `${td.num_stops} 정거장` : '';
+    const head     = td.headsign ? ` (${td.headsign})` : '';
+    const bg       = color || td.line?.color || '#eef2ff';
+    const fg       = td.line?.text_color || '#111827';
+    const durText  = step.duration?.text || '';   // ✅ 이 줄 추가 (구간 소요시간)
+
+    return `<li><button class="step-btn" data-step="${idx}">
+      ${vehicleEmoji(vType)}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+            style="background:${bg};color:${fg};border:1px solid rgba(0,0,0,0.06);">${lineName}</span>
+      <span class="ml-2">${from} → ${to}${head}</span>
+      <span class="ml-2 text-gray-600">${stops}</span>
+      <span class="ml-2 text-gray-500">${depT}~${arrT}</span>
+      ${durText ? `<span class="ml-2 text-gray-800">· 약 ${durText}</span>` : ``}  <!-- ✅ 여기 표시 -->
+    </button></li>`;
+  }
+
+  return `<li><button class="step-btn" data-step="${idx}">기타 구간</button></li>`;
+}
+
+
+    function secondsToMinText(sec=0){ const m=Math.round(sec/60); return `${m}분`; }
+
+    function renderTimebar(steps){
+      const total = steps.reduce((s,st)=> s + (st.duration?.value||0), 0) || 1;
+      const bar = document.getElementById('timebar');
+      bar.innerHTML = '';
+      steps.forEach((st,i)=>{
+        const dur = st.duration?.value || 0; const w = (dur/total*100).toFixed(2)+'%';
+        const label = (st.travel_mode==='WALKING' ? '도보' : '대중교통') + ` · ${secondsToMinText(dur)}`;
+        const el = document.createElement('div');
+        el.className = 'timebar-seg';
+        el.dataset.label = label;
+        el.style.width = w;
+        el.style.background = (st.travel_mode==='WALKING') ? '#9CA3AF' : (st.transit?.line?.color || '#6366F1');
+        bar.appendChild(el);
+      });
+    }
+
+    function highlightStep(idx){
+      segmentPolylines.forEach((pl,j)=>{ pl.setOptions({ strokeWeight: (j===idx? 8 : (pl.strokeOpacity===0?0:6)), zIndex: (j===idx? 10:1) }); });
+      const p = segmentPolylines[idx];
+      if(p){ const path = p.getPath(); const mid = path.getAt(Math.floor(path.getLength()/2)); map.panTo(mid); map.setZoom(Math.max(map.getZoom(), 13)); }
+    }
+
+    async function drawRoute(){
+      clearOverlays();
+
+      const p = getParams();
+      document.getElementById('pref').value = p.pref;
+      const routingPreference = (p.pref==='LESS_WALKING')? google.maps.TransitRoutePreference.LESS_WALKING : google.maps.TransitRoutePreference.FEWER_TRANSFERS;
+      const req = { origin:new google.maps.LatLng(p.origin.lat,p.origin.lng), destination:new google.maps.LatLng(p.dest.lat,p.dest.lng), travelMode:google.maps.TravelMode.TRANSIT, transitOptions:{ routingPreference, departureTime:p.depart }, provideRouteAlternatives:false, region:'KR' };
+
+      directionsService.route(req, (result,status)=>{
+        if(status!==google.maps.DirectionsStatus.OK || !result?.routes?.length){
+          const box=document.getElementById('fatalBox'); box.classList.remove('hidden'); box.textContent='경로를 불러오지 못했습니다.'; return;
+        }
+        const route = result.routes[0];
+        const leg   = route.legs?.[0];
+        directionsRenderer.setDirections(result);
+
+        // Summary
+        const dep=leg?.departure_time?.text||fmtTime(leg?.departure_time?.value)||'-';
+        const arr=leg?.arrival_time?.text||fmtTime(leg?.arrival_time?.value)||'-';
+        document.getElementById('startEnd').textContent=`출발 ${dep} → 도착 ${arr}`;
+        document.getElementById('summaryDuration').textContent=`총 ${leg?.duration?.text||'-'}`;
+
+        // Build overlays per step
+        const steps=leg?.steps??[];
+        const list=document.getElementById('steps'); list.innerHTML='';
+        renderTimebar(steps);
+
+        let walkingSec=0; let transfers=0;
+        steps.forEach((s,idx)=>{
+          // Polyline
+          if(s.travel_mode==='WALKING'){
+            const pl = makeDashedPolyline(s.path);
+            walkingSec += (s.duration?.value||0);
+          } else if(s.travel_mode==='TRANSIT'){
+            transfers += 1;
+            const td = s.transit || s.transit_details || {};
+            const color = td.line?.color || '#4f46e5';
+            const pl = makeSolidPolyline(s.path, color);
+            // 승차/환승/하차 마커
+            if(td.departure_stop?.location){ addMarker(td.departure_stop.location, 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png', '승차'); }
+            // 다음 스텝도 TRANSIT이면 이번 도착=환승 지점
+            const next = steps[idx+1];
+            if(td.arrival_stop?.location){
+              if(next && next.travel_mode==='TRANSIT') addMarker(td.arrival_stop.location, 'https://maps.google.com/mapfiles/ms/icons/yellow-dot.png', '환승');
+              else addMarker(td.arrival_stop.location, 'https://maps.google.com/mapfiles/ms/icons/green-dot.png', '하차');
+            }
+          }
+          // 목록 HTML
+          const td = s.transit || s.transit_details || {}; const color = td.line?.color || '#eef2ff';
+          list.insertAdjacentHTML('beforeend', stepToHTML(s, idx, color));
+        });
+        document.getElementById('sumWalking').textContent = `도보 ${secondsToMinText(walkingSec)}`;
+        document.getElementById('sumTransfers').textContent = `환승 ${Math.max(0, transfers-1)}회`;
+
+        // step 클릭 → 하이라이트
+        list.querySelectorAll('.step-btn').forEach(btn=>{
+          btn.addEventListener('click', ()=>{ const i=Number(btn.dataset.step); highlightStep(i); });
+        });
+
+        // 마커 토글
+        document.getElementById('toggleMarkers').addEventListener('change', (e)=>{
+          stepMarkers.forEach(m=> m.setMap(e.target.checked? map : null));
+        });
+
+        // 딥링크
+        const g = `https://www.google.com/maps/dir/?api=1&origin=${p.origin.lat},${p.origin.lng}&destination=${p.dest.lat},${p.dest.lng}&travelmode=transit`;
+        document.getElementById('openGmaps').href = g;
+      });
+    }
+
+    function initMap(){
+      const p = getParams();
+      map = new google.maps.Map(document.getElementById('map'), { center:{ lat:(p.origin.lat+p.dest.lat)/2, lng:(p.origin.lng+p.dest.lng)/2 }, zoom:12, gestureHandling:'greedy' });
+      directionsService = new google.maps.DirectionsService();
+      directionsRenderer = new google.maps.DirectionsRenderer({ map, suppressMarkers:false, preserveViewport:false });
+      drawRoute();
+
+      document.getElementById('pref').addEventListener('change', (e)=>{
+        const sp = new URLSearchParams(location.search); sp.set('pref', e.target.value); history.replaceState(null, '', `${location.pathname}?${sp.toString()}`); drawRoute();
+      });
+
+      // 파라미터 self-test
+      const params=getParams();
+      console.assert(!isNaN(params.origin.lat) && !isNaN(params.origin.lng), 'origin should be numbers');
+      console.assert(!isNaN(params.dest.lat)   && !isNaN(params.dest.lng),   'dest should be numbers');
+    }
+  </script>
+
+  <!-- ✅ 실제 키로 교체하세요 -->
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCGgZQhmNH8ooriI05CeOi60AvlOcYTHPQ&libraries=places&callback=initMap"></script>
+</body>
+</html>
