@@ -5,6 +5,9 @@ from flask import Flask, render_template, request, jsonify
 import json
 import os 
 from dotenv import load_dotenv
+import psycopg2
+from psycopg2.pool import SimpleConnectionPool
+from psycopg2.extras import Json
 
 load_dotenv()
 SERVER_KEY = os.getenv("GOOGLE_SERVER_API_KEY")
@@ -13,10 +16,72 @@ if not SERVER_KEY:
 
 app = Flask(__name__)
 
+DB_URL = os.getenv("DATABASE_URL")
+if not DB_URL:
+    raise RuntimeError("환경변수 DATABASE_URL이 없습니다.")
+pool = SimpleConnectionPool(1, 5, dsn=DB_URL)
+def get_conn():
+    return pool.getconn()
+def put_conn(conn):
+    if conn:
+        pool.putconn(conn)
+
 @app.route('/')
 def index():
     """Renders the main page with a form to input coordinates."""
     return render_template('index.html')
+
+# ADD: 결과 저장 API (JSON을 shared_results에 저장하고 id 반환)
+@app.route("/api/save_result", methods=["POST"])
+def save_result():
+    try:
+        data = request.get_json(force=True, silent=False)
+        if not data:
+            return jsonify({"error": "빈 본문입니다."}), 400
+
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO shared_results (data) VALUES (%s) RETURNING id;",
+                    (Json(data),)
+                )
+                new_id = cur.fetchone()[0]
+                conn.commit()
+        finally:
+            put_conn(conn)
+
+        # 링크는 location.origin 기준으로 프론트에서 만들도록 하고, 여기선 id만 반환
+        return jsonify({"id": new_id}), 200
+    except Exception as e:
+        print("save_result error:", e)
+        return jsonify({"error": f"저장 실패: {e}"}), 500
+
+
+# (선택) 공유 링크가 여길 가리키도록: 같은 index.html 재사용
+@app.route("/share/<int:result_id>")
+def share_page(result_id: int):
+    return render_template("index.html", shared_id=result_id)
+
+
+# (선택) 공유 페이지가 최초 로딩 시 JSON을 불러올 수 있도록
+@app.route("/api/shared/<int:result_id>", methods=["GET"])
+def get_shared_json(result_id: int):
+    try:
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT data FROM shared_results WHERE id = %s;", (result_id,))
+                row = cur.fetchone()
+        finally:
+            put_conn(conn)
+
+        if not row:
+            return jsonify({"error": "해당 ID가 없습니다."}), 404
+        return jsonify(row[0]), 200
+    except Exception as e:
+        print("get_shared_json error:", e)
+        return jsonify({"error": f"조회 실패: {e}"}), 500
 
 @app.route('/api/find_places', methods=['POST'])
 def find_places_api():
