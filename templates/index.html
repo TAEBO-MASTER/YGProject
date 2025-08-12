@@ -226,16 +226,23 @@
         let mapReady = false;
         let deferredSharedData = null;
         function renderShared(data) {
-            // 맵 아직이면 버퍼에 저장 후 나중에 실행
-            if (!mapReady) {
-            deferredSharedData = data;
-            return;
+        if (!mapReady) { deferredSharedData = data; return; }
+
+        // 🔧 저장된 출발지로 빨간 마커 복원
+        if ((!originMarkers || originMarkers.length === 0) && Array.isArray(data.origins)) {
+            data.origins.forEach(o => {
+            if (o && typeof o.lat === 'number' && typeof o.lng === 'number') {
+                addOriginMarker({ lat: o.lat, lng: o.lng });
             }
-            lastResult = data;
-            displayResultsOnMap(data);
-            displayResultsText(data);
-            document.getElementById("copyLinkBtn")?.classList.remove("hidden");
+            });
         }
+
+        lastResult = data;
+        displayResultsOnMap(data);  // 여기서 경로/폴리라인이 originMarkers를 사용
+        displayResultsText(data);
+        document.getElementById("copyLinkBtn")?.classList.remove("hidden");
+        }
+
          async function copyTextToClipboard(text) {
             try {
             await navigator.clipboard.writeText(text);
@@ -1005,6 +1012,7 @@
         return;
     }
     try {
+        const payload = {...lastResult, origins: originCoords};
         // 1) 서버에 결과 저장 → id 수신
         const res = await fetch("/api/save_result", {
         method: "POST",
@@ -1015,6 +1023,7 @@
         if (!res.ok) throw new Error(json.error || "저장 실패");
 
         const id = json.id;
+        const base = getShareBase ? getShareBase() : location.origin;
         // 2) 현재 도메인 기준 링크 생성
         const link = `${location.origin}/share/${id}`;
         // 3) 클립보드 복사
