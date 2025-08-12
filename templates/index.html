@@ -1012,20 +1012,19 @@
         return;
     }
     try {
-        const payload = {...lastResult, origins: originCoords};
+        const payload = { ...lastResult, origins: originCoords };
         // 1) 서버에 결과 저장 → id 수신
         const res = await fetch("/api/save_result", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(lastResult),
+        body: JSON.stringify(payload),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "저장 실패");
 
         const id = json.id;
-        const base = getShareBase ? getShareBase() : location.origin;
-        // 2) 현재 도메인 기준 링크 생성
-        const link = `${location.origin}/share/${id}`;
+        const base = location.origin;
+        const link = '${base}/share/${id}';
         // 3) 클립보드 복사
         await copyTextToClipboard(link);
     } catch (e) {
