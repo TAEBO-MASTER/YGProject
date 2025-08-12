@@ -1024,7 +1024,7 @@
 
         const id = json.id;
         const base = location.origin;
-        const link = '${base}/share/${id}';
+        const link = `${base}/share/${id}`;
         // 3) 클립보드 복사
         await copyTextToClipboard(link);
     } catch (e) {
