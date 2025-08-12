@@ -205,6 +205,13 @@
             링크 생성 & 복사
         </button>
         </div>
+        <div class="mt-2 flex justify-center">
+        <button id="openRoutePageBtn"
+                class="hidden bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition">
+            사람별 경로 새 창에서 보기
+        </button>
+        </div>
+
 
     </div>
 
@@ -225,6 +232,7 @@
         let lastResult = null; // 서버에 저장할 최신 결과
         let mapReady = false;
         let deferredSharedData = null;
+        let lastShareId = null;
         function renderShared(data) {
         if (!mapReady) { deferredSharedData = data; return; }
 
@@ -241,6 +249,8 @@
         displayResultsOnMap(data);  // 여기서 경로/폴리라인이 originMarkers를 사용
         displayResultsText(data);
         document.getElementById("copyLinkBtn")?.classList.remove("hidden");
+        lastShareId = document.body.getAttribute("data-shared-id") || lastShareId;
+        document.getElementById("openRoutePageBtn")?.classList.remove("hidden");
         }
 
          async function copyTextToClipboard(text) {
@@ -557,6 +567,8 @@
                     displayResultsOnMap(result);
                     displayResultsText(result);
                     document.getElementById("copyLinkBtn")?.classList.remove("hidden");
+                    document.getElementById("openRoutePageBtn")?.classList.remove("hidden");
+                    lastShareId = null;
                 } else {
                     alert(`오류: ${result.error || result.message || '알 수 없는 오류가 발생했습니다.'}`);
                     console.error("API Error:", result);
@@ -1023,6 +1035,8 @@
         if (!res.ok) throw new Error(json.error || "저장 실패");
 
         const id = json.id;
+        lastShareId = id;
+        document.getElementById("openRoutePageBtn")?.classList.remove("hidden");
         const base = location.origin;
         const link = `${base}/share/${id}`;
         // 3) 클립보드 복사
@@ -1186,6 +1200,29 @@ function stepToHTML(step) {
     e.preventDefault();
     showRoutesForAll();
   });
+  // 새 창에서 사람별 경로 보기
+document.getElementById("openRoutePageBtn")?.addEventListener("click", async () => {
+  try {
+    // 공유 ID가 없으면 한 번 저장해서 만든다.
+    if (!lastShareId) {
+      if (!lastResult) return alert("먼저 장소를 찾고 결과를 만든 뒤 시도하세요.");
+      const payload = lastResult?.origins ? lastResult : { ...lastResult, origins: originCoords };
+      const res = await fetch("/api/save_result", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "저장 실패");
+      lastShareId = json.id;
+    }
+    window.open(`/route/${lastShareId}`, "_blank");
+  } catch (e) {
+    console.error(e);
+    alert(`새 창 열기 실패: ${e.message}`);
+  }
+});
+
 </script>
 
     <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCGgZQhmNH8ooriI05CeOi60AvlOcYTHPQ&libraries=places&callback=initMap"></script>

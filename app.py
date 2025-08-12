@@ -119,6 +119,10 @@ def find_places_api():
         print(f"Error during pipeline execution: {e}")
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
 
+@app.route("/route/<int:result_id>")
+def route_detail(result_id):
+    return render_template("route_detail.html", shared_id=result_id)
+
 # Default lambda is 0.7, but overridden by user input from slider
 LAMBDA = 0.7 
 GRID_SPACING_DEG = 0.002
@@ -530,7 +534,8 @@ def pipeline(origins, lam=LAMBDA, grid_spacing_deg=GRID_SPACING_DEG, margin_deg=
         "direct_nearby_places_study_cafes": study_cafes_list if result_type == "direct_places" else [],
         "cafes_list": cafes_list if result_type == "transit_station" or result_type == "bus_terminal" else [],
         "study_cafes_list": study_cafes_list if result_type == "transit_station" or result_type == "bus_terminal" else [],
-        "message": "" 
+        "message": "",
+        "origins": origins,
     }
     
     return final_result
