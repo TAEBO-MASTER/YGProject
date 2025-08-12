@@ -64,7 +64,7 @@ def share_page(result_id: int):
     return render_template("index.html", shared_id=result_id)
 
 
-# (선택) 공유 페이지가 최초 로딩 시 JSON을 불러올 수 있도록
+# (선택) 공유 페이지가 최초 로딩 시 JSON을 불러올 수 있도록 함
 @app.route("/api/shared/<int:result_id>", methods=["GET"])
 def get_shared_json(result_id: int):
     try:
