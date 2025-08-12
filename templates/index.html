@@ -75,8 +75,7 @@
         }
     </style>
 </head>
-<body class="flex items-center justify-center min-h-screen p-4"
-      data-shared-id="{{ shared_id|default('', true) }}">
+<body class="flex items-center justify-center min-h-screen p-4">
     <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl">
         <!-- 광고 이미지 추가 -->
         <!-- 광고 이미지 + 닫기 버튼 -->
@@ -159,10 +158,22 @@
                 </label>
             </div>
 
-            <button type="submit"
-                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105">
-                장소 찾기
-            </button>
+            <!-- 경로 선호 (장소 찾기 전에 선택) -->
+            <div class="mt-2 flex items-center gap-2">
+            <label class="text-sm text-gray-600">경로 선호:</label>
+            <select id="routePreference" name="transit_pref" class="border rounded px-2 py-1 text-sm">
+                <option value="FEWER_TRANSFERS" selected>환승 적게</option>
+                <option value="LESS_WALKING">도보 적게</option>
+            </select>
+            </div>
+
+<button type="submit" id="submitBtn"
+  class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-lg
+         focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 transition">
+  최적 장소 찾기
+</button>
+
+
         </form>
 
         <div id="loadingIndicator" class="hidden text-center mt-4 text-blue-600 font-semibold">
@@ -176,44 +187,21 @@
         </div>
 
         <div id="resultsDisplay" class="mt-8 hidden">
-            <!-- 결과가 여기에 동적으로 표시됩니다 --->
+            <!-- 결과가 여기에 동적으로 표시됩니다 -->
         </div>
 
+            
 
-                <!-- 경로 상세 컨트롤 -->
-        <div class="mt-4 flex items-center gap-2">
-        <label class="text-sm text-gray-600">경로 선호:</label>
-        <select id="routePreference" class="border rounded px-2 py-1 text-sm">
-            <option value="FEWER_TRANSFERS">환승 적게</option>
-            <option value="LESS_WALKING">도보 적게</option>
-        </select>
-        <button id="btnShowRoutes"
-                class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                disabled>
-            모든 출발지 경로 보기
-        </button>
-        </div>
+        <div id="actionBar" class="mt-4">
+  <button id="btnShowRoutes"
+          class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+          disabled>
+    사람별 경로 상세 보기
+  </button>
+</div>
 
-        <!-- 사람별 경로 결과 패널 -->
-        <div id="routesPanel" class="mt-4 hidden">
-        <!-- JS에서 카드들을 채워 넣습니다 -->
-        </div>
+<div id="routesPanel" class="mt-4 hidden"></div>
 
-                <div class="mt-4 flex justify-center">
-        <button id="copyLinkBtn"
-                class="hidden bg-gray-800 text-white font-bold py-2 px-4 rounded-lg hover:bg-black transition">
-            링크 생성 & 복사
-        </button>
-        </div>
-        <div class="mt-2 flex justify-center">
-        <button id="openRoutePageBtn"
-                class="hidden bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition">
-            사람별 경로 새 창에서 보기
-        </button>
-        </div>
-
-
-    </div>
 
     <!-- Custom Alert/Message Box -->
     <div id="customAlert" class="hidden"></div>
@@ -229,45 +217,6 @@
         let placesService; // 검색용 PlacesService
         let routePolylines = []; // 버스/직접 모드에서 그린 선들을 담아두는 배열
         let selectedDestination = null;
-        let lastResult = null; // 서버에 저장할 최신 결과
-        let mapReady = false;
-        let deferredSharedData = null;
-        let lastShareId = null;
-        function renderShared(data) {
-        if (!mapReady) { deferredSharedData = data; return; }
-
-        // 🔧 저장된 출발지로 빨간 마커 복원
-        if ((!originMarkers || originMarkers.length === 0) && Array.isArray(data.origins)) {
-            data.origins.forEach(o => {
-            if (o && typeof o.lat === 'number' && typeof o.lng === 'number') {
-                addOriginMarker({ lat: o.lat, lng: o.lng });
-            }
-            });
-        }
-
-        lastResult = data;
-        displayResultsOnMap(data);  // 여기서 경로/폴리라인이 originMarkers를 사용
-        displayResultsText(data);
-        document.getElementById("copyLinkBtn")?.classList.remove("hidden");
-        lastShareId = document.body.getAttribute("data-shared-id") || lastShareId;
-        document.getElementById("openRoutePageBtn")?.classList.remove("hidden");
-        }
-
-         async function copyTextToClipboard(text) {
-            try {
-            await navigator.clipboard.writeText(text);
-            showCustomAlert("링크가 복사되었습니다! ✅");
-            } catch (e) {
-            // clipboard API가 막힌 환경 대비
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-            showCustomAlert("링크가 복사되었습니다! ✅");
-            }
-        }
 
         // Function to show custom alert message
         function showCustomAlert(message) {
@@ -291,12 +240,6 @@
                 zoom: 12,
                 gestureHandling: "greedy"
             });
-            mapReady = true;
-            if (deferredSharedData) {
-                const tmp = deferredSharedData;
-                deferredSharedData = null;
-                renderShared(tmp);
-            }
             infoWindow = new google.maps.InfoWindow();
             directionsService = new google.maps.DirectionsService();
 
@@ -550,9 +493,11 @@
             document.getElementById("resultsDisplay").classList.add("hidden");
             document.getElementById("loadingIndicator").classList.remove("hidden");
 
-            const formData = new FormData();
-            formData.append('coords_json', JSON.stringify(originCoords));
-            formData.append('lambda', document.getElementById("lambdaSlider").value);
+            const formEl = document.getElementById("locationForm");
+            const formData = new FormData(formEl);
+            formData.set("coords_json", JSON.stringify(originCoords));
+            formData.set("lambda", document.getElementById("lambdaSlider").value);
+            formData.set("transit_pref", document.getElementById("routePreference").value);
 
             try {
                 const response = await fetch('/api/find_places', {
@@ -563,12 +508,13 @@
                 const result = await response.json();
 
                 if (response.ok) {
-                    lastResult = result;
                     displayResultsOnMap(result);
                     displayResultsText(result);
-                    document.getElementById("copyLinkBtn")?.classList.remove("hidden");
-                    document.getElementById("openRoutePageBtn")?.classList.remove("hidden");
-                    lastShareId = null;
+                    if (selectedDestination) {
+                        document.getElementById('btnShowRoutes').removeAttribute('disabled');
+                        await showRoutesForAll();
+                        document.getElementById('routesPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
                 } else {
                     alert(`오류: ${result.error || result.message || '알 수 없는 오류가 발생했습니다.'}`);
                     console.error("API Error:", result);
@@ -602,7 +548,7 @@
             if (data.result_type === "transit_station" && data.best_station) {
                 mainPlacePos = { lat: data.best_station.lat, lng: data.best_station.lng };
                 selectedDestination = mainPlacePos;
-                document.getElementById("btnShowRoutes").disabled = false;
+                document.getElementById("btnShowRoutes")?.removeAttribute("disabled");
                 mainPlaceTitle = data.best_station.name;
                 mainPlaceIcon = "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"; // Blue for transit station
                 mainPlaceContent = `
@@ -621,32 +567,41 @@
                 }
                 mainPlaceContent += `</div>`;
 
-                // Draw transit routes
+                // Draw transit routes  ✅ 정상 버전(지도 선만)
                 originMarkers.forEach((originMarker, index) => {
-                    const request = {
-                        origin: originMarker.getPosition(),
-                        destination: mainPlacePos,
-                        travelMode: google.maps.TravelMode.TRANSIT,
-                    };
-                    directionsService.route(request, (result, status) => {
-                        if (status === google.maps.DirectionsStatus.OK) {
-                            const directionsRenderer = new google.maps.DirectionsRenderer({
-                                map: map,
-                                suppressMarkers: true,
-                                polylineOptions: { strokeColor: 'blue', strokeOpacity: 0.6, strokeWeight: 4 }
-                            });
-                            directionsRenderer.setDirections(result);
-                            directionsRenderers.push(directionsRenderer);
-                        } else {
-                            console.error(`출발지 ${index + 1}에서 역까지의 대중교통 경로를 찾을 수 없습니다: ${status}`);
-                        }
+                const pref = document.getElementById("routePreference")?.value;
+                const routingPreference = (pref === "LESS_WALKING")
+                    ? google.maps.TransitRoutePreference.LESS_WALKING
+                    : google.maps.TransitRoutePreference.FEWER_TRANSFERS;
+
+                const request = {
+                    origin: originMarker.getPosition(),
+                    destination: mainPlacePos, // 이 스코프에서만 쓰는 목적지
+                    travelMode: google.maps.TravelMode.TRANSIT,
+                    transitOptions: { routingPreference, departureTime: new Date() },
+                    region: "KR"
+                };
+
+                directionsService.route(request, (result, status) => {
+                    if (status === google.maps.DirectionsStatus.OK) {
+                    const dr = new google.maps.DirectionsRenderer({
+                        map,
+                        suppressMarkers: true,
+                        polylineOptions: { strokeColor: 'blue', strokeOpacity: 0.6, strokeWeight: 4 }
                     });
+                    dr.setDirections(result);
+                    directionsRenderers.push(dr);
+                    } else {
+                    console.error(`출발지 ${index + 1} 경로 실패: ${status}`);
+                    }
                 });
+            });
+
 
             } else if (data.result_type === "bus_terminal" && data.best_bus_terminal) {
                 mainPlacePos = { lat: data.best_bus_terminal.lat, lng: data.best_bus_terminal.lng };
                 selectedDestination = mainPlacePos;
-                document.getElementById("btnShowRoutes").disabled = false;
+                document.getElementById("btnShowRoutes")?.removeAttribute("disabled");
                 mainPlaceTitle = data.best_bus_terminal.name;
                 mainPlaceIcon = "http://maps.google.com/mapfiles/ms/icons/orange-dot.png"; // Orange for bus terminal
                 mainPlaceContent = `
@@ -679,6 +634,8 @@
                         <p>역/터미널 대신 이 주변에서 만남을 고려해보세요.</p>
                     </div>
                 `;
+                selectedDestination = mainPlacePos;
+                document.getElementById("btnShowRoutes")?.removeAttribute("disabled");
                  // Draw simple lines to best point
                 originMarkers.forEach((originMarker, index) => {
                      new google.maps.Polyline({
@@ -715,7 +672,7 @@
                 const cafeMarker = new google.maps.Marker({
                     position: cafePos,
                     map: map,
-                    icon: { url: "http://maps.google.com/mapfiles/ms/icons/green-dot.png" },
+                    icon: { url: "https://maps.google.com/mapfiles/ms/icons/green-dot.png" },
                     title: cafe.name
                 });
                 resultMarkers.push(cafeMarker);
@@ -725,14 +682,14 @@
                     <div class="info-window-content">
                         <h3>☕ 카페: ${cafe.name}</h3>
                         <p>거리: ${cafe.distance_km.toFixed(2)} km</p>
-                        <p>위치: ${cafe.lat.toFixed(6)}, ${cafe.lng.toFixed(6)}</p>
                     </div>
                 `;
                 cafeMarker.addListener("click", () => {
                     infoWindow.setContent(cafeContent);
                     infoWindow.open(map, cafeMarker);
                     selectedDestination = cafePos;
-                    document.getElementById("btnShowRoutes").disabled = false;
+                    document.getElementById("btnShowRoutes")?.removeAttribute("disabled");
+
                 });
             });
 
@@ -753,7 +710,6 @@
                     <div class="info-window-content">
                         <h3>📚 스터디카페: ${studyCafe.name}</h3>
                         <p>거리: ${studyCafe.distance_km.toFixed(2)} km</p>
-                        <p>위치: ${studyCafe.lat.toFixed(6)}, ${studyCafe.lng.toFixed(6)}</p>
                         <button class="mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
                                 onclick="showCustomAlert('⏳ 아직은 비밀\\n조금만 기다리면 예약까지 한 번에!')">예약하기</button>
                     </div>
@@ -762,7 +718,8 @@
                     infoWindow.setContent(studyCafeContent);
                     infoWindow.open(map, studyCafeMarker);
                     selectedDestination = studyCafePos;
-                    document.getElementById("btnShowRoutes").disabled = false;
+                    document.getElementById("btnShowRoutes")?.removeAttribute("disabled");
+
                 });
             });
 
@@ -995,58 +952,10 @@
             // private browsing 등 localStorage 불가 환경 대비: 조용히 무시
             }
         });
-
-        document.addEventListener('DOMContentLoaded', async () => {
-        const sharedId = document.body.getAttribute('data-shared-id'); // 또는 .dataset.sharedId
-        if (sharedId) {
-            try {
-            const r = await fetch(`/api/shared/${sharedId}`);
-            const data = await r.json();
-            if (r.ok && data) {
-                renderShared(data); // mapReady가 false면 내부에서 지연 렌더
-            } else {
-                alert(data.error || '공유 데이터를 불러오지 못했습니다.');
-            }
-            } catch (e) {
-            console.error(e);
-            alert('공유 데이터 로드 실패');
-            }
-        }
-        });
     </script>
     <!-- YOUR_GOOGLE_MAPS_API_KEY를 실제 Google Maps API 키로 교체하세요 -->
     <!-- 반드시 Maps JavaScript API, Places API, Distance Matrix API, Directions API가 활성화되어 있어야 합니다. -->
      <script>
-    const copyLinkBtn = document.getElementById("copyLinkBtn");
-    copyLinkBtn.addEventListener("click", async () => {
-    if (!lastResult) {
-        alert("공유할 결과가 없습니다. 먼저 검색하세요.");
-        return;
-    }
-    try {
-        const payload = { ...lastResult, origins: originCoords };
-        // 1) 서버에 결과 저장 → id 수신
-        const res = await fetch("/api/save_result", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(payload),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || "저장 실패");
-
-        const id = json.id;
-        lastShareId = id;
-        document.getElementById("openRoutePageBtn")?.classList.remove("hidden");
-        const base = location.origin;
-        const link = `${base}/share/${id}`;
-        // 3) 클립보드 복사
-        await copyTextToClipboard(link);
-    } catch (e) {
-        console.error(e);
-        alert(`링크 생성 실패: ${e.message}`);
-    }
-    });
-
   const ROUTE_COLORS = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd",
                         "#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"];
 
@@ -1109,120 +1018,116 @@ function stepToHTML(step) {
 }
 
 
-  async function showRoutesForAll() {
-    if (!selectedDestination) { alert("먼저 목적지를 선택(미팅역/터미널/카페 클릭)하세요."); return; }
-    if (!originCoords?.length) { alert("출발지를 먼저 추가하세요."); return; }
+async function showRoutesForAll() {
+  if (!selectedDestination) { alert("먼저 목적지를 선택(미팅역/터미널/카페 클릭)하세요."); return; }
+  if (!originCoords?.length) { alert("출발지를 먼저 추가하세요."); return; }
 
-    // 기존 경로 렌더러 지우기
-    for (let i = 0; i < directionsRenderers.length; i++) directionsRenderers[i].setMap(null);
-    directionsRenderers = [];
+  // 기존 경로 렌더러 제거
+  directionsRenderers.forEach(r => r.setMap(null));
+  directionsRenderers = [];
 
-    const prefRaw = document.getElementById("routePreference").value;
-    const routingPreference =
-      (prefRaw === "LESS_WALKING")
-        ? google.maps.TransitRoutePreference.LESS_WALKING
-        : google.maps.TransitRoutePreference.FEWER_TRANSFERS;
+  const prefRaw = document.getElementById("routePreference").value;
+  const routingPreference =
+    (prefRaw === "LESS_WALKING")
+      ? google.maps.TransitRoutePreference.LESS_WALKING
+      : google.maps.TransitRoutePreference.FEWER_TRANSFERS;
 
-    const panel = document.getElementById("routesPanel");
-    panel.classList.remove("hidden");
-    panel.innerHTML = "";
+  const panel = document.getElementById("routesPanel");
+  panel.classList.remove("hidden");
+  panel.innerHTML = "";
 
-    // 출발지별로 경로 요청
-    const tasks = originCoords.map((orig, idx) => new Promise((resolve) => {
-      directionsService.route({
-        origin: new google.maps.LatLng(orig.lat, orig.lng),
-        destination: new google.maps.LatLng(selectedDestination.lat, selectedDestination.lng),
-        travelMode: google.maps.TravelMode.TRANSIT,
-        transitOptions: { routingPreference, departureTime: new Date() },
-        provideRouteAlternatives: false,
-        region: "KR"
-      }, (result, status) => {
-        const card = document.createElement("div");
-        card.className = "mb-4 p-4 rounded-lg border bg-white shadow-sm";
+  // 출발지별로 비동기 요청 + 카드 생성
+  const tasks = originCoords.map((orig, idx) => new Promise((resolve) => {
+    directionsService.route({
+      origin: new google.maps.LatLng(orig.lat, orig.lng),
+      destination: new google.maps.LatLng(selectedDestination.lat, selectedDestination.lng),
+      travelMode: google.maps.TravelMode.TRANSIT,
+      transitOptions: { routingPreference, departureTime: new Date() },
+      provideRouteAlternatives: false,
+      region: "KR"
+    }, (result, status) => {
+      const card = document.createElement("div");
+      card.className = "mb-4 p-4 rounded-lg border bg-white shadow-sm";
 
-        if (status !== google.maps.DirectionsStatus.OK || !result?.routes?.length) {
-          card.innerHTML = `<div class="font-semibold">출발지 ${idx+1} (${orig.lat.toFixed(4)}, ${orig.lng.toFixed(4)})</div>
-                            <div class="text-red-600">경로를 찾지 못했습니다.</div>`;
-          panel.appendChild(card);
-          return resolve();
-        }
-
-        const route = result.routes[0];
-        const leg = route.legs?.[0];
-        const startLabel = cleanAddress(leg?.start_address || `출발지 ${idx+1}`);
-
-        const steps = leg?.steps ?? [];
-        const durationText = leg?.duration?.text ?? "-";
-        const arrival = leg?.arrival_time?.text || fmtTime(leg?.arrival_time?.value) || "-";
-        const departure = leg?.departure_time?.text || fmtTime(leg?.departure_time?.value) || "-";
-        const transfers = Math.max(0, steps.filter(s => s.travel_mode === "TRANSIT").length - 1);
-
-        // 지도에 경로 그리기 (사람마다 다른 색)
-        const renderer = new google.maps.DirectionsRenderer({
-          map,
-          directions: result,
-          suppressMarkers: false,
-          preserveViewport: true,
-          polylineOptions: { strokeColor: ROUTE_COLORS[idx % ROUTE_COLORS.length], strokeOpacity: 0.8, strokeWeight: 5 }
-        });
-        directionsRenderers.push(renderer);
-
-        card.innerHTML = `
-  <div class="flex items-baseline justify-between mb-2">
-    <div class="font-semibold text-gray-900">
-      출발지 ${idx+1} · <span class="text-gray-700">${startLabel}</span>
-    </div>
-    <div class="text-sm text-gray-500">출발 ${departure || "-"} → 도착 ${arrival || "-"}</div>
-  </div>
-  <div class="mb-2">
-    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100">
-      총 ${durationText || "-"}
-    </span>
-    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 ml-1">
-      환승 ${transfers}회
-    </span>
-  </div>
-  <ol class="mt-2 space-y-1 text-gray-800 list-decimal pl-5">
-    ${steps.map(stepToHTML).join("")}
-  </ol>
-        `;
-
+      if (status !== google.maps.DirectionsStatus.OK || !result?.routes?.length) {
+        card.innerHTML = `<div class="font-semibold">출발지 ${idx+1}</div>
+                          <div class="text-red-600">경로를 찾지 못했습니다.</div>`;
         panel.appendChild(card);
-        resolve();
-      });
-    }));
+        return resolve();
+      }
 
-    await Promise.all(tasks);
-  }
+      const route = result.routes[0];
+      const leg   = route.legs?.[0];
+      const startLabel   = cleanAddress(leg?.start_address || `출발지 ${idx+1}`);
+      const steps        = leg?.steps ?? [];
+      const durationText = leg?.duration?.text ?? "-";
+      const arrival      = leg?.arrival_time?.text || fmtTime(leg?.arrival_time?.value) || "-";
+      const departure    = leg?.departure_time?.text || fmtTime(leg?.departure_time?.value) || "-";
+      const transfers    = Math.max(0, steps.filter(s => s.travel_mode === "TRANSIT").length - 1);
+
+      // 지도 경로(사람마다 다른 색)
+      const renderer = new google.maps.DirectionsRenderer({
+        map,
+        directions: result,
+        suppressMarkers: false,
+        preserveViewport: true,
+        polylineOptions: { strokeColor: ROUTE_COLORS[idx % ROUTE_COLORS.length], strokeOpacity: 0.8, strokeWeight: 5 }
+      });
+      directionsRenderers.push(renderer);
+
+      // 카드 HTML
+      card.innerHTML = `
+        <div class="flex items-baseline justify-between mb-2">
+          <div class="font-semibold text-gray-900">출발지 ${idx+1} · <span class="text-gray-700">${startLabel}</span></div>
+          <div class="text-sm text-gray-500">출발 ${departure} → 도착 ${arrival}</div>
+        </div>
+        <div class="mb-2">
+          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+            총 ${durationText}
+          </span>
+          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 ml-1">
+            환승 ${transfers}회
+          </span>
+        </div>
+        <ol class="mt-2 space-y-1 text-gray-800 list-decimal pl-5">
+          ${steps.map(stepToHTML).join("")}
+        </ol>
+        <div class="mt-3 text-right">
+          <button class="detail-btn px-3 py-1.5 rounded-md bg-gray-900 text-white"
+            data-origin-lat="${orig.lat}"
+            data-origin-lng="${orig.lng}"
+            data-dest-lat="${selectedDestination.lat}"
+            data-dest-lng="${selectedDestination.lng}"
+            data-pref="${prefRaw}">
+            자세히 보기
+          </button>
+        </div>
+      `;
+      panel.appendChild(card);
+
+      // 상세 페이지 이동
+      card.querySelector(".detail-btn").addEventListener("click", (ev) => {
+        const b = ev.currentTarget;
+        const url = `/route?origin=${b.dataset.originLat},${b.dataset.originLng}`
+                  + `&dest=${b.dataset.destLat},${b.dataset.destLng}`
+                  + `&pref=${b.dataset.pref}`
+                  + `&depart=${Date.now()}`;
+        window.location.href = url;
+      });
+
+      resolve();
+    });
+  }));
+
+  await Promise.all(tasks);
+}
+
 
   // 버튼 클릭 연결
   document.getElementById("btnShowRoutes")?.addEventListener("click", (e) => {
     e.preventDefault();
     showRoutesForAll();
   });
-  // 새 창에서 사람별 경로 보기
-document.getElementById("openRoutePageBtn")?.addEventListener("click", async () => {
-  try {
-    // 공유 ID가 없으면 한 번 저장해서 만든다.
-    if (!lastShareId) {
-      if (!lastResult) return alert("먼저 장소를 찾고 결과를 만든 뒤 시도하세요.");
-      const payload = lastResult?.origins ? lastResult : { ...lastResult, origins: originCoords };
-      const res = await fetch("/api/save_result", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "저장 실패");
-      lastShareId = json.id;
-    }
-    window.open(`/route/${lastShareId}`, "_blank");
-  } catch (e) {
-    console.error(e);
-    alert(`새 창 열기 실패: ${e.message}`);
-  }
-});
-
 </script>
 
     <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCGgZQhmNH8ooriI05CeOi60AvlOcYTHPQ&libraries=places&callback=initMap"></script>

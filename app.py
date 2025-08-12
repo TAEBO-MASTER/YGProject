@@ -5,9 +5,6 @@ from flask import Flask, render_template, request, jsonify
 import json
 import os 
 from dotenv import load_dotenv
-import psycopg2
-from psycopg2.pool import SimpleConnectionPool
-from psycopg2.extras import Json
 
 load_dotenv()
 SERVER_KEY = os.getenv("GOOGLE_SERVER_API_KEY")
@@ -16,72 +13,15 @@ if not SERVER_KEY:
 
 app = Flask(__name__)
 
-DB_URL = os.getenv("DATABASE_URL")
-if not DB_URL:
-    raise RuntimeError("환경변수 DATABASE_URL이 없습니다.")
-pool = SimpleConnectionPool(1, 5, dsn=DB_URL)
-def get_conn():
-    return pool.getconn()
-def put_conn(conn):
-    if conn:
-        pool.putconn(conn)
-
 @app.route('/')
 def index():
     """Renders the main page with a form to input coordinates."""
-    return render_template('index.html', shared_id="")
+    return render_template('index.html')
 
-# ADD: 결과 저장 API (JSON을 shared_results에 저장하고 id 반환)
-@app.route("/api/save_result", methods=["POST"])
-def save_result():
-    try:
-        data = request.get_json(force=True, silent=False)
-        if not data:
-            return jsonify({"error": "빈 본문입니다."}), 400
-
-        conn = get_conn()
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO shared_results (data) VALUES (%s) RETURNING id;",
-                    (Json(data),)
-                )
-                new_id = cur.fetchone()[0]
-                conn.commit()
-        finally:
-            put_conn(conn)
-
-        # 링크는 location.origin 기준으로 프론트에서 만들도록 하고, 여기선 id만 반환
-        return jsonify({"id": new_id}), 200
-    except Exception as e:
-        print("save_result error:", e)
-        return jsonify({"error": f"저장 실패: {e}"}), 500
-
-
-# (선택) 공유 링크가 여길 가리키도록: 같은 index.html 재사용
-@app.route("/share/<int:result_id>")
-def share_page(result_id: int):
-    return render_template("index.html", shared_id=result_id)
-
-
-# (선택) 공유 페이지가 최초 로딩 시 JSON을 불러올 수 있도록 함
-@app.route("/api/shared/<int:result_id>", methods=["GET"])
-def get_shared_json(result_id: int):
-    try:
-        conn = get_conn()
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SELECT data FROM shared_results WHERE id = %s;", (result_id,))
-                row = cur.fetchone()
-        finally:
-            put_conn(conn)
-
-        if not row:
-            return jsonify({"error": "해당 ID가 없습니다."}), 404
-        return jsonify(row[0]), 200
-    except Exception as e:
-        print("get_shared_json error:", e)
-        return jsonify({"error": f"조회 실패: {e}"}), 500
+@app.route("/route")
+def route_detail():
+    # 쿼리스트링으로 origin, dest, pref, depart를 받으므로 서버 로직 불필요
+    return render_template("route_detail.html")
 
 @app.route('/api/find_places', methods=['POST'])
 def find_places_api():
@@ -89,6 +29,10 @@ def find_places_api():
     Processes the submitted coordinates, runs the pipeline, and returns results as JSON.
     Handles potential errors during coordinate parsing or pipeline execution.
     """
+    transit_pref = request.form.get("transit_pref", "FEWER_TRANSFERS")
+    pref_map = {"LESS_WALKING": "less_walking", "FEWER_TRANSFERS": "fewer_transfers"}
+    transit_pref_api = pref_map.get(transit_pref, "fewer_transfers")
+
     coords_json_text = request.form['coords_json']
     lambda_value = float(request.form.get('lambda', 0.7)) 
 
@@ -109,7 +53,7 @@ def find_places_api():
         return jsonify({"error": "At least one origin coordinate must be selected."}), 400
 
     try:
-        result_data = pipeline(origins, lam=lambda_value) 
+        result_data = pipeline(origins, lam=lambda_value, transit_pref_api=transit_pref_api)
         
         if result_data.get("result_type") == "error":
             return jsonify({"error": result_data.get("message", "An unknown error occurred.")}), 500
@@ -118,10 +62,6 @@ def find_places_api():
     except Exception as e:
         print(f"Error during pipeline execution: {e}")
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
-
-@app.route("/route/<int:result_id>")
-def route_detail(result_id):
-    return render_template("route_detail.html", shared_id=result_id)
 
 # Default lambda is 0.7, but overridden by user input from slider
 LAMBDA = 0.7 
@@ -365,7 +305,7 @@ def get_nearby_places_sorted_by_distance(center_lat, center_lng, search_configs,
 
 
 # ===== Step 5: Select the best station based on weighted travel time (Distance Matrix) =====
-def distance_matrix_times_minutes(origins, destinations, mode="transit", api_key=SERVER_KEY):
+def distance_matrix_times_minutes(origins, destinations, mode="transit", api_key=SERVER_KEY, transit_pref_api=None):
     """
     Uses Google Distance Matrix API to get travel times (in minutes)
     from multiple origins to multiple destinations.
@@ -385,6 +325,8 @@ def distance_matrix_times_minutes(origins, destinations, mode="transit", api_key
         "key": api_key,
         "language": "ko"
     }
+    if mode == "transit" and transit_pref_api:
+        params["transit_routing_preference"] = transit_pref_api
     
     try:
         r = requests.get(url, params=params, timeout=(5,15)).json()
@@ -407,7 +349,7 @@ def distance_matrix_times_minutes(origins, destinations, mode="transit", api_key
         times.append(row_times)
     return times
 
-def best_station_by_time(origins, stations, lam, mode="transit", api_key=SERVER_KEY):
+def best_station_by_time(origins, stations, lam, mode="transit", api_key=SERVER_KEY, transit_pref_api=None):
     """
     Finds the best station from a list of candidates based on the weighted travel
     time from all origins to that station.
@@ -416,7 +358,7 @@ def best_station_by_time(origins, stations, lam, mode="transit", api_key=SERVER_
         return None
 
     try:
-        times_mat = distance_matrix_times_minutes(origins, stations, mode=mode, api_key=api_key)
+        times_mat = distance_matrix_times_minutes(origins, stations, mode=mode, api_key=api_key, transit_pref_api=transit_pref_api)
     except RuntimeError as e:
         print(f"Failed to get distance matrix times: {e}")
         return None
@@ -451,7 +393,7 @@ def best_station_by_time(origins, stations, lam, mode="transit", api_key=SERVER_
 
 # ===== Main Pipeline Function =====
 def pipeline(origins, lam=LAMBDA, grid_spacing_deg=GRID_SPACING_DEG, margin_deg=MARGIN_DEG,
-             travel_mode="transit", api_key=SERVER_KEY):
+             travel_mode="transit", api_key=SERVER_KEY, transit_pref_api=None):
     """
     Orchestrates the entire process of finding the optimal meeting point,
     with fallbacks to bus terminals or direct cafes if transit stations are not found.
@@ -534,8 +476,7 @@ def pipeline(origins, lam=LAMBDA, grid_spacing_deg=GRID_SPACING_DEG, margin_deg=
         "direct_nearby_places_study_cafes": study_cafes_list if result_type == "direct_places" else [],
         "cafes_list": cafes_list if result_type == "transit_station" or result_type == "bus_terminal" else [],
         "study_cafes_list": study_cafes_list if result_type == "transit_station" or result_type == "bus_terminal" else [],
-        "message": "",
-        "origins": origins,
+        "message": "" 
     }
     
     return final_result
