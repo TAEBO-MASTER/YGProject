@@ -29,7 +29,7 @@ def put_conn(conn):
 @app.route('/')
 def index():
     """Renders the main page with a form to input coordinates."""
-    return render_template('index.html')
+    return render_template('index.html', shared_id="")
 
 # ADD: 결과 저장 API (JSON을 shared_results에 저장하고 id 반환)
 @app.route("/api/save_result", methods=["POST"])

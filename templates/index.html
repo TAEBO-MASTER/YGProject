@@ -75,7 +75,8 @@
         }
     </style>
 </head>
-<body class="flex items-center justify-center min-h-screen p-4">
+<body class="flex items-center justify-center min-h-screen p-4"
+      data-shared-id="{{ shared_id|default('', true) }}">
     <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl">
         <!-- 광고 이미지 추가 -->
         <!-- 광고 이미지 + 닫기 버튼 -->
@@ -222,7 +223,19 @@
         let routePolylines = []; // 버스/직접 모드에서 그린 선들을 담아두는 배열
         let selectedDestination = null;
         let lastResult = null; // 서버에 저장할 최신 결과
-
+        let mapReady = false;
+        let deferredSharedData = null;
+        function renderShared(data) {
+            // 맵 아직이면 버퍼에 저장 후 나중에 실행
+            if (!mapReady) {
+            deferredSharedData = data;
+            return;
+            }
+            lastResult = data;
+            displayResultsOnMap(data);
+            displayResultsText(data);
+            document.getElementById("copyLinkBtn")?.classList.remove("hidden");
+        }
          async function copyTextToClipboard(text) {
             try {
             await navigator.clipboard.writeText(text);
@@ -261,6 +274,12 @@
                 zoom: 12,
                 gestureHandling: "greedy"
             });
+            mapReady = true;
+            if (deferredSharedData) {
+                const tmp = deferredSharedData;
+                deferredSharedData = null;
+                renderShared(tmp);
+            }
             infoWindow = new google.maps.InfoWindow();
             directionsService = new google.maps.DirectionsService();
 
@@ -956,6 +975,24 @@
             } catch (e) {
             // private browsing 등 localStorage 불가 환경 대비: 조용히 무시
             }
+        });
+
+        document.addEventListener('DOMContentLoaded', async () => {
+        const sharedId = document.body.getAttribute('data-shared-id'); // 또는 .dataset.sharedId
+        if (sharedId) {
+            try {
+            const r = await fetch(`/api/shared/${sharedId}`);
+            const data = await r.json();
+            if (r.ok && data) {
+                renderShared(data); // mapReady가 false면 내부에서 지연 렌더
+            } else {
+                alert(data.error || '공유 데이터를 불러오지 못했습니다.');
+            }
+            } catch (e) {
+            console.error(e);
+            alert('공유 데이터 로드 실패');
+            }
+        }
         });
     </script>
     <!-- YOUR_GOOGLE_MAPS_API_KEY를 실제 Google Maps API 키로 교체하세요 -->
