@@ -502,7 +502,23 @@ function restoreState() {
                 }
             );
             }
+          if (isBackForwardNav()) {
             restoreState();
+            // 목적지와 출발지가 있으면 경로도 자동 복원
+            if (originCoords.length && selectedDestination) {
+            showRoutesForAll();
+            }
+        } else {
+            // 새 방문/새탭/직접 URL 진입 등은 복원하지 않음(2번 요구)
+            try { localStorage.removeItem(LS_KEY); } catch {}
+        }
+        }
+        // 뒤로/앞으로 탐색 감지 유틸
+        function isBackForwardNav() {
+        try {
+            const nav = performance.getEntriesByType('navigation')?.[0];
+            return nav && nav.type === 'back_forward';
+        } catch { return false; }
         }
         function resetMap() {
             // 0) UI 기본값으로 초기화
@@ -953,7 +969,7 @@ function restoreState() {
                     infoWindow.open(map, studyCafeMarker);
                     selectedDestination = studyCafePos;
                     document.getElementById("btnShowRoutes")?.removeAttribute("disabled");
-
+                    saveState();
                 });
             });
 
@@ -1396,6 +1412,7 @@ async function showRoutesForAll() {
       // 상세 페이지 이동
       card.querySelector(".detail-btn").addEventListener("click", (ev) => {
         const b = ev.currentTarget;
+        saveState();
         const url = `/route?origin=${b.dataset.originLat},${b.dataset.originLng}`
                   + `&dest=${b.dataset.destLat},${b.dataset.destLng}`
                   + `&pref=${b.dataset.pref}`
