@@ -154,6 +154,7 @@ def places_nearby(lat, lng, radius_m, type_name=None, keyword=None, api_key=SERV
         "location": f"{lat},{lng}",
         "radius": radius_m,
         "key": api_key,
+        "language": "ko"
     }
     if type_name:
         params["type"] = type_name
@@ -312,7 +313,8 @@ def distance_matrix_times_minutes(origins, destinations, mode="transit", api_key
         "destinations": dests_param,
         "mode": mode,
         "departure_time": "now",
-        "key": api_key
+        "key": api_key,
+        "language": "ko"
     }
     
     try:

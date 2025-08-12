@@ -177,6 +177,26 @@
         <div id="resultsDisplay" class="mt-8 hidden">
             <!-- 결과가 여기에 동적으로 표시됩니다 -->
         </div>
+
+                <!-- 경로 상세 컨트롤 -->
+        <div class="mt-4 flex items-center gap-2">
+        <label class="text-sm text-gray-600">경로 선호:</label>
+        <select id="routePreference" class="border rounded px-2 py-1 text-sm">
+            <option value="FEWER_TRANSFERS">환승 적게</option>
+            <option value="LESS_WALKING">도보 적게</option>
+        </select>
+        <button id="btnShowRoutes"
+                class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                disabled>
+            모든 출발지 경로 보기
+        </button>
+        </div>
+
+        <!-- 사람별 경로 결과 패널 -->
+        <div id="routesPanel" class="mt-4 hidden">
+        <!-- JS에서 카드들을 채워 넣습니다 -->
+        </div>
+
     </div>
 
     <!-- Custom Alert/Message Box -->
@@ -192,6 +212,7 @@
         let directionsRenderers = []; // 경로 표시 렌더러 배열 (각 출발지마다)
         let placesService; // 검색용 PlacesService
         let routePolylines = []; // 버스/직접 모드에서 그린 선들을 담아두는 배열
+        let selectedDestination = null;
 
         // Function to show custom alert message
         function showCustomAlert(message) {
@@ -239,6 +260,7 @@
             // 자동완성: 드롭다운 선택 시 바로 추가
             const autocomplete = new google.maps.places.Autocomplete(searchInput, {
             fields: ["place_id", "geometry", "name", "formatted_address"],
+            componentRestrictions: { country: "kr" }
             });
             autocomplete.bindTo("bounds", map);
 
@@ -514,6 +536,8 @@
 
             if (data.result_type === "transit_station" && data.best_station) {
                 mainPlacePos = { lat: data.best_station.lat, lng: data.best_station.lng };
+                selectedDestination = mainPlacePos;
+                document.getElementById("btnShowRoutes").disabled = false;
                 mainPlaceTitle = data.best_station.name;
                 mainPlaceIcon = "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"; // Blue for transit station
                 mainPlaceContent = `
@@ -556,6 +580,8 @@
 
             } else if (data.result_type === "bus_terminal" && data.best_bus_terminal) {
                 mainPlacePos = { lat: data.best_bus_terminal.lat, lng: data.best_bus_terminal.lng };
+                selectedDestination = mainPlacePos;
+                document.getElementById("btnShowRoutes").disabled = false;
                 mainPlaceTitle = data.best_bus_terminal.name;
                 mainPlaceIcon = "http://maps.google.com/mapfiles/ms/icons/orange-dot.png"; // Orange for bus terminal
                 mainPlaceContent = `
@@ -640,6 +666,8 @@
                 cafeMarker.addListener("click", () => {
                     infoWindow.setContent(cafeContent);
                     infoWindow.open(map, cafeMarker);
+                    selectedDestination = cafePos;
+                    document.getElementById("btnShowRoutes").disabled = false;
                 });
             });
 
@@ -668,6 +696,8 @@
                 studyCafeMarker.addListener("click", () => {
                     infoWindow.setContent(studyCafeContent);
                     infoWindow.open(map, studyCafeMarker);
+                    selectedDestination = studyCafePos;
+                    document.getElementById("btnShowRoutes").disabled = false;
                 });
             });
 
@@ -903,6 +933,162 @@
     </script>
     <!-- YOUR_GOOGLE_MAPS_API_KEY를 실제 Google Maps API 키로 교체하세요 -->
     <!-- 반드시 Maps JavaScript API, Places API, Distance Matrix API, Directions API가 활성화되어 있어야 합니다. -->
+     <script>
+  const ROUTE_COLORS = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd",
+                        "#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"];
+
+  function fmtTime(ts) {
+    try { return new Date(ts).toTimeString().slice(0,5); } catch(e) { return ""; }
+  }
+
+  // 주소 보기 좋게 정리
+function cleanAddress(str = "") {
+  return String(str)
+    .replace(/^대한민국\s*/, "")
+    .replace(/\(\d{5}\)\s*/g, "")
+    .trim();
+}
+function vehicleEmoji(type) {
+  switch (type) {
+    case "SUBWAY": return "🚇";
+    case "HEAVY_RAIL":
+    case "COMMUTER_TRAIN":
+    case "RAIL": return "🚉";
+    case "BUS": return "🚌";
+    case "TRAM": return "🚊";
+    default: return "🚆";
+  }
+}
+
+function stepToHTML(step) {
+  if (step.travel_mode === "WALKING") {
+    const d = step.distance?.text ?? "";
+    const t = step.duration?.text ?? "";
+    return `<li class="leading-6">🚶 도보 <span class="text-gray-700">${d}</span> · <span class="text-gray-700">약 ${t}</span></li>`;
+  }
+  if (step.travel_mode === "TRANSIT") {
+    // ✅ JS SDK는 step.transit 사용 (transit_details 아님)
+    const td = step.transit || step.transit_details;
+    if (!td) return `<li>대중교통 구간</li>`;
+    const lineName = td.line?.short_name || td.line?.name || "노선";
+    const vType = td.line?.vehicle?.type || "";
+    const from = cleanAddress(td.departure_stop?.name || "");
+    const to   = cleanAddress(td.arrival_stop?.name || "");
+    const depT = td.departure_time?.text || (td.departure_time?.value ? new Date(td.departure_time.value).toTimeString().slice(0,5) : "");
+    const arrT = td.arrival_time?.text || (td.arrival_time?.value ? new Date(td.arrival_time.value).toTimeString().slice(0,5) : "");
+    const stops = (td.num_stops != null) ? `${td.num_stops} 정거장` : "";
+    const head  = td.headsign ? ` (${td.headsign})` : "";
+    const bg = td.line?.color || "#eef2ff";     // 노선 색상
+    const fg = td.line?.text_color || "#111827";
+
+    return `
+      <li class="leading-6">
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+              style="background:${bg};color:${fg};border:1px solid rgba(0,0,0,0.06);">
+          ${vehicleEmoji(vType)} ${lineName}
+        </span>
+        <span class="ml-2">${from} → ${to}${head}</span>
+        <span class="ml-2 text-gray-600">${stops}</span>
+        <span class="ml-2 text-gray-500">${depT}~${arrT}</span>
+      </li>`;
+  }
+  return `<li>기타 구간</li>`;
+}
+
+
+  async function showRoutesForAll() {
+    if (!selectedDestination) { alert("먼저 목적지를 선택(미팅역/터미널/카페 클릭)하세요."); return; }
+    if (!originCoords?.length) { alert("출발지를 먼저 추가하세요."); return; }
+
+    // 기존 경로 렌더러 지우기
+    for (let i = 0; i < directionsRenderers.length; i++) directionsRenderers[i].setMap(null);
+    directionsRenderers = [];
+
+    const prefRaw = document.getElementById("routePreference").value;
+    const routingPreference =
+      (prefRaw === "LESS_WALKING")
+        ? google.maps.TransitRoutePreference.LESS_WALKING
+        : google.maps.TransitRoutePreference.FEWER_TRANSFERS;
+
+    const panel = document.getElementById("routesPanel");
+    panel.classList.remove("hidden");
+    panel.innerHTML = "";
+
+    // 출발지별로 경로 요청
+    const tasks = originCoords.map((orig, idx) => new Promise((resolve) => {
+      directionsService.route({
+        origin: new google.maps.LatLng(orig.lat, orig.lng),
+        destination: new google.maps.LatLng(selectedDestination.lat, selectedDestination.lng),
+        travelMode: google.maps.TravelMode.TRANSIT,
+        transitOptions: { routingPreference, departureTime: new Date() },
+        provideRouteAlternatives: false,
+        region: "KR"
+      }, (result, status) => {
+        const card = document.createElement("div");
+        card.className = "mb-4 p-4 rounded-lg border bg-white shadow-sm";
+
+        if (status !== google.maps.DirectionsStatus.OK || !result?.routes?.length) {
+          card.innerHTML = `<div class="font-semibold">출발지 ${idx+1} (${orig.lat.toFixed(4)}, ${orig.lng.toFixed(4)})</div>
+                            <div class="text-red-600">경로를 찾지 못했습니다.</div>`;
+          panel.appendChild(card);
+          return resolve();
+        }
+
+        const route = result.routes[0];
+        const leg = route.legs?.[0];
+        const startLabel = cleanAddress(leg?.start_address || `출발지 ${idx+1}`);
+
+        const steps = leg?.steps ?? [];
+        const durationText = leg?.duration?.text ?? "-";
+        const arrival = leg?.arrival_time?.text || fmtTime(leg?.arrival_time?.value) || "-";
+        const departure = leg?.departure_time?.text || fmtTime(leg?.departure_time?.value) || "-";
+        const transfers = Math.max(0, steps.filter(s => s.travel_mode === "TRANSIT").length - 1);
+
+        // 지도에 경로 그리기 (사람마다 다른 색)
+        const renderer = new google.maps.DirectionsRenderer({
+          map,
+          directions: result,
+          suppressMarkers: false,
+          preserveViewport: true,
+          polylineOptions: { strokeColor: ROUTE_COLORS[idx % ROUTE_COLORS.length], strokeOpacity: 0.8, strokeWeight: 5 }
+        });
+        directionsRenderers.push(renderer);
+
+        card.innerHTML = `
+  <div class="flex items-baseline justify-between mb-2">
+    <div class="font-semibold text-gray-900">
+      출발지 ${idx+1} · <span class="text-gray-700">${startLabel}</span>
+    </div>
+    <div class="text-sm text-gray-500">출발 ${departure || "-"} → 도착 ${arrival || "-"}</div>
+  </div>
+  <div class="mb-2">
+    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+      총 ${durationText || "-"}
+    </span>
+    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 ml-1">
+      환승 ${transfers}회
+    </span>
+  </div>
+  <ol class="mt-2 space-y-1 text-gray-800 list-decimal pl-5">
+    ${steps.map(stepToHTML).join("")}
+  </ol>
+        `;
+
+        panel.appendChild(card);
+        resolve();
+      });
+    }));
+
+    await Promise.all(tasks);
+  }
+
+  // 버튼 클릭 연결
+  document.getElementById("btnShowRoutes")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    showRoutesForAll();
+  });
+</script>
+
     <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCGgZQhmNH8ooriI05CeOi60AvlOcYTHPQ&libraries=places&callback=initMap"></script>
 </body>
 </html>
