@@ -47,7 +47,7 @@
             margin-top: 0.5rem; /* Adjust as needed */
             margin-bottom: 0.25rem;
         }
-
+        .title-shadow { text-shadow: 0 1px 0 rgba(64,54,53,.25); }
         /* Custom Alert/Message Box Styles */
         #customAlert {
             position: fixed;
@@ -73,6 +73,7 @@
             90% { opacity: 1; }
             100% { opacity: 0; }
         }
+
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
@@ -94,7 +95,18 @@
         </div>
 
 
-        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">🤝 최적 미팅 장소 찾기</h1>
+        <!-- 제목 영역: #77CFF2 배경 / 단어별 색상 분리 -->
+        <div class="mb-6 rounded-lg overflow-hidden">
+        <div class="py-6 text-center flex items-center justify-center gap-3">
+            <img src="/static/apple-touch-icon.png" alt="Where To Meet 로고" class="h-12 w-auto">
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight title-shadow">
+            <span style="color:#403635;">   Where </span>
+            <span style="color:#35AAF2;">To </span>
+            <span style="color:#77CFF2;">Meet</span>
+            </h1>
+        </div>
+        </div>
+
         <form id="locationForm" class="space-y-4">
             <div>
                 <label for="map" class="block text-gray-700 text-sm font-semibold mb-2">
@@ -828,8 +840,10 @@ function restoreState() {
                     <div class="info-window-content">
                         <h3>📚 스터디카페: ${studyCafe.name}</h3>
                         <p>거리: ${studyCafe.distance_km.toFixed(2)} km</p>
-                        <button class="mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-                                onclick="showCustomAlert('⏳ 아직은 비밀\\n조금만 기다리면 예약까지 한 번에!')">예약하기</button>
+                        <a class="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
+                            ="/reserve?place_id=${studyCafe.place_id || cafe.place_id}"
+                            target="_self">예약하기</a>
+
                     </div>
                 `;
                 studyCafeMarker.addListener("click", () => {
@@ -909,8 +923,10 @@ function restoreState() {
                                 <li>
                                     <strong>${studyCafe.name}</strong> (거리: ${studyCafe.distance_km.toFixed(2)} km)
                                     <span class="text-sm text-gray-500">(${studyCafe.lat.toFixed(6)}, ${studyCafe.lng.toFixed(6)})</span>
-                                    <button class="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
-                                            onclick="showCustomAlert('⏳ 아직은 비밀\\n조금만 기다리면 예약까지 한 번에!')">예약하기</button>
+                                    <a class="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
+                                        href="/reserve?place_id=${studyCafe.place_id || cafe.place_id}"
+                                        target="_self">예약하기</a>
+
                                 </li>
                         `;
                     });
@@ -970,8 +986,10 @@ function restoreState() {
                                 <li>
                                     <strong>${studyCafe.name}</strong> (거리: ${studyCafe.distance_km.toFixed(2)} km)
                                     <span class="text-sm text-gray-500">(${studyCafe.lat.toFixed(6)}, ${studyCafe.lng.toFixed(6)})</span>
-                                    <button class="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
-                                            onclick="showCustomAlert('⏳ 아직은 비밀\\n조금만 기다리면 예약까지 한 번에!')">예약하기</button>
+                                    <a class="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
+                                        href="/reserve?place_id=${studyCafe.place_id || cafe.place_id}"
+                                        target="_self">예약하기</a>
+
                                 </li>
                         `;
                     });
@@ -1025,8 +1043,10 @@ function restoreState() {
                                 <li>
                                     <strong>${studyCafe.name}</strong> (거리: ${studyCafe.distance_km.toFixed(2)} km)
                                     <span class="text-sm text-gray-500">(${studyCafe.lat.toFixed(6)}, ${studyCafe.lng.toFixed(6)})</span>
-                                    <button class="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
-                                            onclick="showCustomAlert('⏳ 아직은 비밀\\n조금만 기다리면 예약까지 한 번에!')">예약하기</button>
+                                    <a class="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
+                                        href="/reserve?place_id=${studyCafe.place_id || cafe.place_id}"
+                                        target="_self">예약하기</a>
+
                                 </li>
                         `;
                     });

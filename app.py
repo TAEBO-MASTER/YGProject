@@ -481,6 +481,114 @@ def pipeline(origins, lam=LAMBDA, grid_spacing_deg=GRID_SPACING_DEG, margin_deg=
     
     return final_result
 
+# ---------- [예약/상세 API] ----------
+
+from flask import Response
+from datetime import datetime
+import pathlib
+
+@app.route('/reserve')
+def reserve_page():
+    # templates/reservation.html 렌더 (쿼리스트링 place_id는 프런트 JS에서 읽음)
+    return render_template('reservation.html')
+
+@app.route('/api/place_details')
+def api_place_details():
+    """ Google Places Details → 가게 상세(가격대, 사진, 평점 등) 프록시 """
+    place_id = request.args.get('place_id')
+    if not place_id:
+        return jsonify({"error": "place_id가 필요합니다."}), 400
+
+    fields = ",".join([
+        "name","formatted_address","international_phone_number",
+        "website","rating","user_ratings_total","price_level",
+        "opening_hours","photos","geometry","types"
+    ])
+    url = (
+        "https://maps.googleapis.com/maps/api/place/details/json"
+        f"?place_id={place_id}&fields={fields}&language=ko&key={SERVER_KEY}"
+    )
+    r = requests.get(url, timeout=8)
+    data = r.json()
+    if data.get("status") != "OK":
+        return jsonify({"error": data.get("status"), "detail": data}), 502
+
+    result = data["result"]
+    # 사진은 photo_reference만 전달하고, 이미지는 별도 /api/place_photo로
+    photos = []
+    for p in result.get("photos", [])[:8]:
+        photos.append({
+            "ref": p.get("photo_reference"),
+            "width": p.get("width"),
+            "height": p.get("height")
+        })
+
+    return jsonify({
+        "name": result.get("name"),
+        "address": result.get("formatted_address"),
+        "phone": result.get("international_phone_number"),
+        "website": result.get("website"),
+        "rating": result.get("rating"),
+        "ratings_total": result.get("user_ratings_total"),
+        "price_level": result.get("price_level"),  # 0~4
+        "opening_hours": result.get("opening_hours", {}),
+        "location": result.get("geometry", {}).get("location"),
+        "types": result.get("types", []),
+        "photos": photos
+    })
+
+@app.route('/api/place_photo')
+def api_place_photo():
+    """ photo_reference → 이미지 바이너리 프록시 (브라우저에서 <img src>로 사용) """
+    photoref = request.args.get("photoref")
+    maxwidth = request.args.get("maxwidth", "800")
+    if not photoref:
+        return jsonify({"error": "photoref가 필요합니다."}), 400
+    url = (
+        "https://maps.googleapis.com/maps/api/place/photo"
+        f"?maxwidth={maxwidth}&photo_reference={photoref}&key={SERVER_KEY}"
+    )
+    r = requests.get(url, stream=True, timeout=10)
+    # Google이 302로 실제 이미지 CDN을 주는 경우가 있어 follow_redirects 역할
+    if r.status_code in (301, 302) and 'location' in r.headers:
+        r = requests.get(r.headers['location'], stream=True, timeout=10)
+    content_type = r.headers.get('Content-Type', 'image/jpeg')
+    return Response(r.content, content_type=content_type)
+
+@app.route('/api/reservations', methods=['POST'])
+def api_reservations():
+    """ 예약 저장 (데모: 로컬 JSON에 append) """
+    payload = request.get_json(force=True, silent=True) or {}
+    required = ["place_id","place_name","date","time","party_size","name","phone"]
+    missing = [k for k in required if not payload.get(k)]
+    if missing:
+        return jsonify({"error": f"누락 필드: {', '.join(missing)}"}), 400
+
+    # 간단한 ID 생성
+    rid = f"rsv_{int(time.time())}"
+    payload["reservation_id"] = rid
+    payload["created_at"] = datetime.utcnow().isoformat() + "Z"
+
+    data_dir = pathlib.Path("data"); data_dir.mkdir(exist_ok=True)
+    db_file = data_dir / "reservations.json"
+    if db_file.exists():
+        try:
+            db = json.loads(db_file.read_text(encoding="utf-8"))
+        except Exception:
+            db = []
+    else:
+        db = []
+    db.append(payload)
+    db_file.write_text(json.dumps(db, ensure_ascii=False, indent=2), encoding="utf-8")
+    return jsonify({"ok": True, "reservation_id": rid})
+
+
+
+
+
+
+
+
 if __name__ == "__main__":
     print(" * Flask app starting on http://0.0.0.0:5000")
     print(" * Access it from your computer at http://127.0.0.1:5000 or http://localhost:5000")

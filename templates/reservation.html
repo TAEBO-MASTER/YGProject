@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>예약하기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <header class="bg-white border-b sticky top-0 z-30">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+      <a href="javascript:history.back()" class="px-3 py-1.5 rounded-lg border hover:bg-gray-50">← 뒤로</a>
+      <h1 id="storeName" class="text-xl font-semibold">예약하기</h1>
+      <span id="priceTag" class="ml-auto text-sm text-gray-600"></span>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- 좌: 가게 정보 -->
+    <section class="lg:col-span-2">
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="flex items-start gap-4">
+          <div>
+            <div class="flex items-center gap-2 text-sm text-gray-600">
+              <span id="ratingBadge" class="px-2 py-1 rounded bg-gray-100"></span>
+              <span id="reviewsCount"></span>
+            </div>
+            <p id="storeAddress" class="mt-2 text-gray-700"></p>
+            <div class="mt-1 text-sm text-gray-600 space-x-3">
+              <span id="storePhone"></span>
+              <a id="storeWebsite" target="_blank" class="underline underline-offset-2"></a>
+            </div>
+          </div>
+        </div>
+
+        <!-- 사진 그리드 -->
+        <div id="photoGrid" class="mt-5 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2"></div>
+
+        <!-- 영업 시간 -->
+        <div class="mt-6">
+          <h3 class="font-semibold mb-2">영업시간</h3>
+          <ul id="openingHours" class="text-sm text-gray-700 space-y-1"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 우: 예약 폼 -->
+    <aside class="lg:col-span-1">
+      <form id="rsvForm" class="bg-white rounded-2xl shadow p-5 space-y-4">
+        <input type="hidden" id="placeId" />
+        <input type="hidden" id="placeName" />
+
+        <div>
+          <label class="block text-sm font-medium mb-1">날짜</label>
+          <input id="date" type="date" class="w-full border rounded-lg px-3 py-2" required />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">시간</label>
+          <select id="time" class="w-full border rounded-lg px-3 py-2" required></select>
+          <p class="text-xs text-gray-500 mt-1">* 실영업시간과 다르면 가게 안내를 우선하세요.</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">인원</label>
+          <select id="party" class="w-full border rounded-lg px-3 py-2">
+            <option>1</option><option>2</option><option>3</option><option>4</option>
+            <option>5</option><option>6</option><option>7</option><option>8</option>
+            <option>9</option><option>10</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">이름</label>
+            <input id="name" type="text" class="w-full border rounded-lg px-3 py-2" required />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">연락처</label>
+            <input id="phone" type="tel" class="w-full border rounded-lg px-3 py-2" required />
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">이메일 (선택)</label>
+          <input id="email" type="email" class="w-full border rounded-lg px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">요청사항 (선택)</label>
+          <textarea id="notes" rows="3" class="w-full border rounded-lg px-3 py-2"></textarea>
+        </div>
+
+        <button id="submitBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg px-4 py-2">
+          예약 요청하기
+        </button>
+
+        <p id="formMsg" class="text-sm mt-2"></p>
+      </form>
+    </aside>
+  </main>
+
+  <script>
+    const qs = new URLSearchParams(location.search);
+    const placeId = qs.get("place_id");
+    if (!placeId) {
+      alert("place_id가 없습니다. 장소에서 '예약하기'로 진입하세요.");
+    }
+    document.getElementById("placeId").value = placeId;
+
+    // 시간 슬롯(30분 간격, 09:00~21:00) 기본 생성
+    function buildTimeSlots(opening) {
+      const sel = document.getElementById("time");
+      sel.innerHTML = "";
+      const slots = [];
+      for (let h=9; h<=21; h++) {
+        for (let m of [0,30]) {
+          slots.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);
+        }
+      }
+      // TODO: opening_hours.periods 기반으로 필터링하고 싶다면 여기서 가공
+      slots.forEach(t=>{
+        const opt = document.createElement("option");
+        opt.value = opt.textContent = t;
+        sel.appendChild(opt);
+      });
+    }
+
+    function priceToWon(level) {
+      // Google price_level: 0~4 → ₩~₩₩₩₩
+      if (level === null || level === undefined) return "";
+      return "가격대: " + "₩".repeat(Math.min(4, Math.max(1, level || 1)));
+    }
+
+    function renderOpeningHours(opening_hours) {
+      const ul = document.getElementById("openingHours");
+      ul.innerHTML = "";
+      const weekday_text = opening_hours?.weekday_text || [];
+      if (!weekday_text.length) {
+        ul.innerHTML = '<li class="text-gray-500">영업시간 정보 없음</li>';
+        return;
+      }
+      weekday_text.forEach(line=>{
+        const li = document.createElement("li");
+        li.textContent = line;
+        ul.appendChild(li);
+      });
+    }
+
+    function renderPhotos(photos) {
+      const wrap = document.getElementById("photoGrid");
+      wrap.innerHTML = "";
+      photos.forEach(p=>{
+        const img = document.createElement("img");
+        img.loading = "lazy";
+        img.className = "w-full h-32 object-cover rounded-lg border";
+        img.src = `/api/place_photo?photoref=${encodeURIComponent(p.ref)}&maxwidth=600`;
+        wrap.appendChild(img);
+      });
+    }
+
+    async function loadPlace() {
+      try {
+        const r = await fetch(`/api/place_details?place_id=${encodeURIComponent(placeId)}`);
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "상세 조회 실패");
+
+        document.getElementById("storeName").textContent = d.name || "가게";
+        document.getElementById("placeName").value = d.name || "";
+        document.getElementById("priceTag").textContent = priceToWon(d.price_level);
+        document.getElementById("storeAddress").textContent = d.address || "";
+        document.getElementById("storePhone").textContent = d.phone || "";
+        const site = document.getElementById("storeWebsite");
+        site.textContent = d.website ? "웹사이트" : "";
+        site.href = d.website || "#";
+        document.getElementById("ratingBadge").textContent = d.rating ? `★ ${d.rating}` : "평점 정보 없음";
+        document.getElementById("reviewsCount").textContent = d.ratings_total ? `(${d.ratings_total}개 리뷰)` : "";
+
+        renderPhotos(d.photos || []);
+        renderOpeningHours(d.opening_hours || {});
+        buildTimeSlots(d.opening_hours || {});
+      } catch (e) {
+        console.error(e);
+        alert(e.message);
+      }
+    }
+
+    loadPlace();
+
+    document.getElementById("rsvForm").addEventListener("submit", async (e)=>{
+      e.preventDefault();
+      const btn = document.getElementById("submitBtn");
+      const msg = document.getElementById("formMsg");
+      btn.disabled = true; msg.textContent = "처리 중...";
+
+      const payload = {
+        place_id: document.getElementById("placeId").value,
+        place_name: document.getElementById("placeName").value,
+        date: document.getElementById("date").value,
+        time: document.getElementById("time").value,
+        party_size: document.getElementById("party").value,
+        name: document.getElementById("name").value,
+        phone: document.getElementById("phone").value,
+        email: document.getElementById("email").value,
+        notes: document.getElementById("notes").value
+      };
+
+      try {
+        const r = await fetch("/api/reservations", {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify(payload)
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "예약 저장 실패");
+
+        msg.className = "text-green-700";
+        msg.textContent = `완료! 예약번호: ${d.reservation_id}`;
+      } catch (err) {
+        msg.className = "text-red-600";
+        msg.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
