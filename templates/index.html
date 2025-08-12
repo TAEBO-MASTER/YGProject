@@ -218,6 +218,70 @@
         let routePolylines = []; // 버스/직접 모드에서 그린 선들을 담아두는 배열
         let selectedDestination = null;
 
+        // --- 상태 저장/복원(LocalStorage) ---
+const LS_KEY = 'w2m_state_v1';
+
+function saveState() {
+  try {
+    if (!map) return;
+    const c = map.getCenter();
+    const payload = {
+      origins: originCoords,                           // [{lat,lng}, ...]
+      dest: selectedDestination,                       // {lat,lng} | null
+      lambda: parseFloat(document.getElementById("lambdaSlider").value),
+      pref: document.getElementById("routePreference").value,
+      map: { center: { lat: c.lat(), lng: c.lng() }, zoom: map.getZoom() }
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(payload));
+  } catch (e) { console.warn('saveState failed', e); }
+}
+
+function restoreState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+
+    // UI 값
+    if (s.lambda != null) {
+      const slider = document.getElementById("lambdaSlider");
+      const label  = document.getElementById("lambdaValue");
+      slider.value = s.lambda;
+      label.textContent = parseFloat(s.lambda).toFixed(1);
+    }
+    if (s.pref) {
+      document.getElementById("routePreference").value = s.pref;
+    }
+
+    // 지도 위치 (initMap의 기본 세팅 이후 호출됨)
+    if (s.map?.center && s.map?.zoom) {
+      map.setCenter(s.map.center);
+      map.setZoom(s.map.zoom);
+    }
+
+    // 출발지 핀 복원
+    if (Array.isArray(s.origins)) {
+      s.origins.forEach(pos => addOriginMarker(pos));
+    }
+
+    // 목적지 복원 (마커만)
+    if (s.dest?.lat && s.dest?.lng) {
+      selectedDestination = { lat: s.dest.lat, lng: s.dest.lng };
+      const m = new google.maps.Marker({
+        position: selectedDestination,
+        map,
+        icon: { url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png" },
+        title: "이전에 선택한 목적지"
+      });
+      resultMarkers.push(m);
+      document.getElementById("btnShowRoutes")?.removeAttribute("disabled");
+      // 필요하면 자동으로 경로 복원:
+      // await showRoutesForAll();
+    }
+  } catch (e) { console.warn('restoreState failed', e); }
+}
+
+
         // Function to show custom alert message
         function showCustomAlert(message) {
             const customAlert = document.getElementById("customAlert");
@@ -240,6 +304,8 @@
                 zoom: 12,
                 gestureHandling: "greedy"
             });
+            map.addListener('idle', saveState);
+
             infoWindow = new google.maps.InfoWindow();
             directionsService = new google.maps.DirectionsService();
 
@@ -251,6 +317,8 @@
             document.getElementById("resetBtn").addEventListener("click", resetMap);
             document.getElementById("locationForm").addEventListener("submit", handleFormSubmit);
             document.getElementById("useCurrentLocationBtn").addEventListener("click", useCurrentLocation);
+            document.getElementById("routePreference").addEventListener("change", saveState);
+            document.getElementById("lambdaSlider").addEventListener("input", saveState);
 
             const lambdaSlider = document.getElementById("lambdaSlider");
             const lambdaValueSpan = document.getElementById("lambdaValue");
@@ -318,25 +386,65 @@
                 }
             );
             }
-
+            restoreState();
         }
         function resetMap() {
-        // 1) 결과/출발지 모두 삭제
-        clearResultMarkers();
-        clearOriginMarkers();
+            // 0) UI 기본값으로 초기화
+            const slider = document.getElementById("lambdaSlider");
+            const lambdaValueSpan = document.getElementById("lambdaValue");
+            slider.value = 0.5;
+            lambdaValueSpan.textContent = "0.5";
+            document.getElementById("routePreference").value = "FEWER_TRANSFERS";
+            document.getElementById("placeSearch").value = "";
+            document.getElementById("coords_json").value = "[]";
+            document.getElementById("loadingIndicator").classList.add("hidden");
+            document.getElementById("customAlert")?.classList.add("hidden");
 
-        // 2) 지도 초기 상태로
-        const seoul = { lat: 37.5665, lng: 126.9780 };
-        map.setCenter(seoul);
-        map.setZoom(12);
+            // 1) 지도 오버레이/마커/렌더러 전부 제거
+            clearResultMarkers();      // 결과 마커 + directionsRenderers + routePolylines + infoWindow 닫힘
+            clearOriginMarkers();      // 출발지 마커 + originCoords 비움
 
-        // 3) 결과 패널/로딩/히든 값 초기화
-        const results = document.getElementById("resultsDisplay");
-        document.getElementById("coords_json").value = "[]";
+            // 혹시 남았을 수도 있는 렌더러/폴리라인도 한번 더 안전하게 정리
+            for (const r of directionsRenderers) r.setMap(null);
+            directionsRenderers = [];
+            for (const pl of routePolylines) pl.setMap(null);
+            routePolylines = [];
+            if (infoWindow) infoWindow.close();
 
-        // 4) 커스텀 알럿 닫기
-        document.getElementById("customAlert")?.classList.add("hidden");
+            // 2) 결과 패널/버튼 초기화
+            const results = document.getElementById("resultsDisplay");
+            results.innerHTML = "";
+            results.classList.add("hidden");
+
+            const panel = document.getElementById("routesPanel");
+            panel.innerHTML = "";
+            panel.classList.add("hidden");
+
+            const btn = document.getElementById("btnShowRoutes");
+            btn.setAttribute("disabled", "disabled");
+
+            // 3) 상태 변수 초기화
+            selectedDestination = null;
+
+            // 4) 지도 위치 초기화
+            const seoul = { lat: 37.5665, lng: 126.9780 };
+            map.setCenter(seoul);
+            map.setZoom(12);
+
+            // 5) 로컬 저장 상태도 '빈 상태'로 덮어쓰기
+            //  - 완전히 없애고 싶으면 removeItem(LS_KEY) 사용해도 되지만,
+            //    초기화된 빈 상태를 저장해두는 편이 뒤로 오기/새로고침 시에도 깨끗합니다.
+            try {
+                if (typeof saveState === "function") {
+                saveState();               // 빈 상태 저장(권장)
+                // 또는 아래 한 줄로 완전 삭제:
+                // localStorage.removeItem(LS_KEY);
+                }
+            } catch (e) {
+                console.warn("state reset failed", e);
+            }
         }
+
 
         function useCurrentLocation() {
             const loadingIndicatorDiv = document.getElementById("currentLocationLoading");
@@ -420,6 +528,7 @@
             originMarkers.push(marker);
             originCoords.push({ lat: location.lat, lng: location.lng }); // ✨ 수정된 부분: location.lat(), location.lng() -> location.lat, location.lng
             updateCoordsJson(); // hidden input 업데이트
+            saveState();
 
             // **새로운 기능: 마커 클릭 시 개별 삭제**
             marker.addListener("click", () => {
@@ -454,6 +563,7 @@
             originCoords = []; // 좌표 배열 비우기
             updateCoordsJson(); // hidden input 업데이트
             console.log("모든 출발지 핀이 제거되었습니다.");
+            saveState();
         }
 
         function clearResultMarkers() {
@@ -478,6 +588,7 @@
         if (infoWindow) {
             infoWindow.close();
         }
+        saveState();
         }
 
 
@@ -549,6 +660,8 @@
                 mainPlacePos = { lat: data.best_station.lat, lng: data.best_station.lng };
                 selectedDestination = mainPlacePos;
                 document.getElementById("btnShowRoutes")?.removeAttribute("disabled");
+                saveState();
+
                 mainPlaceTitle = data.best_station.name;
                 mainPlaceIcon = "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"; // Blue for transit station
                 mainPlaceContent = `
@@ -602,6 +715,8 @@
                 mainPlacePos = { lat: data.best_bus_terminal.lat, lng: data.best_bus_terminal.lng };
                 selectedDestination = mainPlacePos;
                 document.getElementById("btnShowRoutes")?.removeAttribute("disabled");
+                saveState();
+
                 mainPlaceTitle = data.best_bus_terminal.name;
                 mainPlaceIcon = "http://maps.google.com/mapfiles/ms/icons/orange-dot.png"; // Orange for bus terminal
                 mainPlaceContent = `
@@ -636,6 +751,8 @@
                 `;
                 selectedDestination = mainPlacePos;
                 document.getElementById("btnShowRoutes")?.removeAttribute("disabled");
+                saveState();
+
                  // Draw simple lines to best point
                 originMarkers.forEach((originMarker, index) => {
                      new google.maps.Polyline({
@@ -689,6 +806,7 @@
                     infoWindow.open(map, cafeMarker);
                     selectedDestination = cafePos;
                     document.getElementById("btnShowRoutes")?.removeAttribute("disabled");
+                    saveState();
 
                 });
             });

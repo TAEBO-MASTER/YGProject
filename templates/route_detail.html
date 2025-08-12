@@ -22,7 +22,11 @@
   <!-- Top bar -->
   <header class="sticky top-0 z-10 bg-white/90 backdrop-blur border-b">
     <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
-      <a href="/" class="text-gray-600 hover:text-gray-900">← 돌아가기</a>
+    <a href="/" class="text-gray-600 hover:text-gray-900"
+      onclick="if (history.length > 1) { history.back(); return false; }">
+      ← 돌아가기
+    </a>
+
       <h1 class="text-lg sm:text-xl font-semibold text-gray-900">사람별 경로 상세</h1>
       <div class="ml-auto flex items-center gap-3">
         <label class="inline-flex items-center gap-1 text-sm text-gray-700">
